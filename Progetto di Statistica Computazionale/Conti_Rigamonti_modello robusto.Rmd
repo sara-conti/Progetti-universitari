@@ -1,0 +1,783 @@
+---
+title: "Automobile_Conti_Rigamonti"
+author: "Sara Conti"
+date: "4/11/2020"
+output: word_document
+---
+---
+title: "Conti_Rigamonti"
+author: "Sara Conti"
+date: "25/10/2020"
+output: word_document
+---
+# Descrizione dati
+1. Symboling =Simboli, del processo di ‘simbolizzazione’ (+3=auto rischiosa, -3=probabilmente abbastanza sicura): -3, -2, -1, 0, 1, 2, 3.
+2. Normalized-losses = perdite normalizzate: continue da 65 a 256.
+3. Make = marca:
+alfa-romero, audi, bmw, chevrolet , schivare, honda,
+isuzu, giaguaro, mazda, mercedes-benz, mercury,
+mitsubishi, nissan, peugot, plymouth, porsche,
+renault, saab, subaru, toyota, volkswagen, volvo
+4. Fuel-type = tipo di carburante: diesel, gas.
+5. Aspiration = aspirazione: std, turbo.
+6. Num-of-doors = numero di porte: quattro, due.
+7. Body-style = stile carrozzeria: hardtop, station wagon, berlina, hatchback, cabriolet.
+8. Drive-wheels = ruote motrici: 4wd, fwd, rwd.
+9. Engine-location = posizione del motore: anteriore, posteriore.
+10. Wheel-base = Interasse: continuo da 86,6 a 120,9.
+11. Length = lunghezza: continua da 141.1 a 208.1.
+12. Width = larghezza: continua da 60,3 a 72,3.
+13. Height = altezza: continua da 47,8 a 59,8.
+14. Curb-weight = peso a vuoto: continuo da 1488 a 4066.
+15. Engine-type = tipo di motore: dohc, dohcv, l, ohc, ohcf, ohcv, rotore.
+16. Num-of-cylinders = numero di cilindri: otto, cinque, quattro, sei, tre, dodici, due.
+17. Engine-size = cilindrata: continua da 61 a 326.
+18. Fuel-system = alimentazione: 1bbl, 2bbl, 4bbl, idi, mfi, mpfi, spdi, spfi.
+19. Bore = alesaggio: continuo da 2,54 a 3,94.
+20. Stroke = corsa: continua da 2.07 a 4.17.
+21. Compression-ratio = rapporto di compressione: continuo da 7 a 23.
+22. Horsepower = cavalli: continuo da 48 a 288.
+23. Peak-rpm = giri di punta: continuo da 4150 a 6600.
+24. City-mpg = città-mpg: continuo da 13 a 49.
+25. Highway-mpg = autostrada-mpg: continuo da 16 a 54.
+26. Price = prezzo: continuo da 5118 a 45400.
+
+# IMPORTAZIONE DATI
+```{r}
+data <- read.csv("Automobile_data.csv", sep=';', dec='.',stringsAsFactors = TRUE, na.strings=c('?'))
+
+options(scipen=999)
+```
+
+### Controllo importazione 
+```{r}
+head(data)
+str(data)
+```
+Osserviamo che il fattore symboling è importato non correttamente (è un fattore, ma viene memorizzato come un intero).
+Procediamo correggendolo.
+
+### Correzione importazione
+```{r}
+data$symboling <- as.factor(data$symboling)
+
+str(data)
+```
+Osserviamo che ora la variabile è memorizzata nel formato corretto.
+
+
+# DATI MANCANTI (CONTEGGIO E IMPUTAZIONE)
+### Conteggio dati mancanti
+```{r}
+sapply(data, function(x)(sum(is.na(x))))
+
+library(funModeling)
+library(dplyr)
+status=df_status(data, print_results = F)
+head(status%>% arrange(-q_na,type))
+```
+Osserviamo che sono presenti valori mancanti e che per normalized.losses sono il 20%, quindi decidiamo di eliminarla. 
+Ipotizziamo che i restanti dati mancanti siano di tipo MAR (Missing At Random) e procediamo applicando la procedura dell'imputazione.
+
+### Dataset covariate
+```{r}
+cov <- data[,-c(2,25)]
+colnames(cov)
+```
+Abbiamo creato il dataset contenente le covariate. 
+
+### Imputazione fattori (imputazione singola)
+```{r}
+library(Hmisc)
+cov$num.of.doors=impute(cov$num.of.doors)
+```
+Applicando questa tipologia di imputazione sostituiamo i valori mancanti della variabile qualitativa considerata con la moda.
+
+### Imputazione covariate quantitative (imputazione multipla)
+```{r}
+library(mice)
+md.pattern(cov) 
+nrow(na.omit(cov))
+```
+Notiamo che ci sono 199 osservazioni senza valori mancanti (12 dati mancanti in totale).
+In particolare, 4 osservazioni hanno un valore mancante per bore e uno per stroke e 2 hanno due valori mancanti, uno per horsepower e uno per peak.rpm.
+
+Procediamo con l'imputazione:
+```{r}
+data_temp <- mice(cov, m=1, maxit=20, meth='pmm', seed=500)
+
+cov_imputed <- complete(data_temp,1)
+
+sapply(cov_imputed, function(x)(sum(is.na(x))))
+
+```
+Ovviamente dopo l'imputazione nessuna variabile presenta valori mancanti.
+
+Confrontiamo gli istogrammi delle variabili prima e dopo l'imputazione:
+```{r}
+hist(cov$bore)
+hist(cov_imputed$bore)
+
+hist(cov$stroke)
+hist(cov_imputed$stroke)
+
+hist(cov$horsepower)
+hist(cov_imputed$horsepower)
+
+hist(cov$peak.rpm)
+hist(cov_imputed$peak.rpm)
+```
+Vediamo che i grafici prima e dopo l'imputazione sono molto simili l'uno con l'altro e dunque non abbiamo particolari problemi.
+
+### Dataset covariate quantitative
+```{r}
+cov_numeric <- cov_imputed%>% dplyr::select_if(is.numeric)
+colnames(cov_numeric)
+```
+
+### Dataset fattori
+```{r}
+cov_factor <- cov_imputed%>% dplyr::select_if(is.factor)
+colnames(cov_factor)
+```
+Abbiamo creato due dataset, uno contenente le covariate quantitative e l'altro contenente i fattori, per poter lavorare successivamente sulla collinearità del modello.
+
+# COLLINEARITà
+### Dataset variabili del modello
+```{r}
+price <- data$price
+data_used <- cbind(price, cov_imputed)
+colnames(data_used)
+```
+Abbiamo creato un dataset contenente le covariate imputate e la variabile risposta.
+
+### Modello 1 
+```{r}
+fit1 <- lm(price ~ ., data=data_used)
+summary(fit1)
+drop1(fit1, test='F')
+```
+Fittiamo il nostro primo modello (ANCOVA).
+
+Il valore dell'R^2 aggiustato è 0.9523 e quindi il nostro modello spiega il 95% circa della variabilità della risposta (osserviamo che si tratta già di un valore molto elevato).
+
+Inoltre notiamo che per fuel.type le stime non vengono calcolate. Questo potrebbe essere causato o dal fatto che è presente esatta collinearità o dal fatto che sono presenti covariate con variabilità nulla. 
+
+### Diagnostiche fit1
+```{r}
+par(mfrow=c(2,2))
+plot(fit1)
+par(mfrow=c(1,1))
+```
+Osservando i grafici relativi alle diagnostiche del nostro modello notiamo che:
+- Grafico residui vs valori interpolati: l'assunzione di linearità sembra essere rispettata
+- QQ_plot residui standardizzati: la distribuzione è leggermente asimmetrica a destra
+- Scale-Location: il modello potrebbe soffrire di eteroschedasticità
+- Grafico residui standardizzati vs leverage: sicuramente sono presenti degli outliers e dei punti di leva, tuttavia non siamo certe della presenza di punti influenti, poichè essendoci osservazioni con leva pari a 1 (18, 29, 43, 44, 47, 56, 123) non vengono rappresentate.
+
+### Correlazioni bivariate tra covariate numeriche
+```{r}
+library(corrgram)
+corrgram(cov_numeric,lower.panel = panel.cor, cex=1, cex.labels = 1)
+
+library(PerformanceAnalytics)
+chart.Correlation(cov_numeric, hostogram=FALSE, pch=19)
+```
+
+Osserviamo che ci sono correlazioni bivariate elevate, per esempio tra wheel.base e length (0.87), tra length e curb.weight (0.88), tra width e curb.weight (0.87), tra curb.weight e engine.size (0.85) e soprattutto tra city.mpg e highway.mpg (0.97). 
+
+
+### TOL e VIF
+Creiamo un dataset contenente la nostra variabile risposta e solo le covariate numeriche:
+```{r}
+data_used_numeric <- cbind(price, cov_numeric)
+colnames(data_used_numeric)
+```
+
+Ora fittiamo il modello di regressione lineare multiplo della risposta su tutte le covariate numeriche e ne calcoliamo le diagnostiche TOL e VIF:
+```{r}
+fit_numeric <- lm(price ~ ., data=data_used_numeric)
+
+library(mctest)
+imcdiag(fit_numeric)
+```
+Vediamo che ci sono valori di VIF maggiori di 5 e dunque anche valori di TOL minori di 0.3. Decidiamo quindi di non mantenere tutte le covariate numeriche all'interno del nostro modello e anzi, di toglierne una ad una.
+
+Andiamo prima però a vedere i chi quadri normalizzati e dunque le associazioni tra i fattori.
+
+### Associazioni tra fattori (chi quadri normalizzati)
+```{r}
+library(plyr)
+combos <- combn(ncol(cov_factor),2)
+adply(combos, 2, function(x) {
+  test <- chisq.test(cov_factor[, x[1]], cov_factor[, x[2]])
+  tab  <- table(cov_factor[, x[1]], cov_factor[, x[2]])
+  out <- data.frame("Row" = colnames(cov_factor)[x[1]]
+                    , "Column" = colnames(cov_factor[x[2]])
+                    , "Chi.Square" = round(test$statistic,3)
+                    , "df"= test$parameter
+                    , "p.value" = round(test$p.value, 3)
+                    , "n" = sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))
+                    , "u1" =length(unique(cov_factor[,x[1]]))-1
+                    , "u2" =length(unique(cov_factor[,x[2]]))-1
+                    , "nMinu1u2" =sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))* min(length(unique(cov_factor[,x[1]]))-1 , length(unique(cov_factor[,x[2]]))-1) 
+                    , "Chi.Square norm"  =test$statistic/(sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))* min(length(unique(cov_factor[,x[1]]))-1 , length(unique(cov_factor[,x[2]]))-1)) 
+  )
+  
+  
+  return(out)
+  
+}) 
+```
+C'è un chi quadro normalizzato maggiore di 0.9 e quindi decidiamo di eliminare o fuel.type o fuel.system, ovvero la coppia di covariate che restituisce un chi quadro normalizzato pari a 1.
+
+### Modello 2 (Senza fuel.system)
+```{r}
+fit2 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base + 
+    length + width + height + curb.weight + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + 
+    horsepower + peak.rpm + city.mpg + highway.mpg, data=data_used)
+```
+
+### Covariate fattori
+```{r}
+cov_factor <- cov_factor[,-10]
+names(cov_factor)
+```
+Abbiamo aggiornato il dataset contenente i fattori (eliminando fuel.system).
+
+### Chi quadri-normalizzati
+```{r}
+library(plyr)
+combos <- combn(ncol(cov_factor),2)
+adply(combos, 2, function(x) {
+  test <- chisq.test(cov_factor[, x[1]], cov_factor[, x[2]])
+  tab  <- table(cov_factor[, x[1]], cov_factor[, x[2]])
+  out <- data.frame("Row" = colnames(cov_factor)[x[1]]
+                    , "Column" = colnames(cov_factor[x[2]])
+                    , "Chi.Square" = round(test$statistic,3)
+                    , "df"= test$parameter
+                    , "p.value" = round(test$p.value, 3)
+                    , "n" = sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))
+                    , "u1" =length(unique(cov_factor[,x[1]]))-1
+                    , "u2" =length(unique(cov_factor[,x[2]]))-1
+                    , "nMinu1u2" =sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))* min(length(unique(cov_factor[,x[1]]))-1 , length(unique(cov_factor[,x[2]]))-1) 
+                    , "Chi.Square norm"  =test$statistic/(sum(table(cov_factor[,x[1]], cov_factor[,x[2]]))* min(length(unique(cov_factor[,x[1]]))-1 , length(unique(cov_factor[,x[2]]))-1)) 
+  )
+  
+  
+  return(out)
+  
+}) 
+```
+Non ci sono più chi quadri normalizzati maggiori di 0.9.
+Ora procediamo eliminando le covariate quantitative che avevano valori al di là della soglia per quanto riguarda TOL e VIF. 
+
+### Modello 3 (Senza city.mpg)
+```{r}
+library(mctest)
+
+fit3 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels +  wheel.base + 
+    length + width + height + curb.weight + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + 
+    horsepower + peak.rpm + highway.mpg, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +length +width +height + curb.weight +engine.size +bore + stroke + compression.ratio + horsepower + peak.rpm + highway.mpg, data=data_used)
+
+imcdiag((fit_numeric))
+```
+
+### Modello 4 (Senza curb.weight)
+```{r}
+fit4 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base + 
+    length + width + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + 
+    horsepower + peak.rpm + highway.mpg, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +length +width +height +engine.size +bore + stroke + compression.ratio + horsepower + peak.rpm + highway.mpg, data=data_used)
+
+imcdiag((fit_numeric))
+
+```
+
+### Modello 5 (Senza lenght)
+```{r}
+fit5 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base + width + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + 
+    horsepower + peak.rpm + highway.mpg, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +width +height  +engine.size +bore + stroke + compression.ratio + horsepower + peak.rpm + highway.mpg, data=data_used)
+
+imcdiag((fit_numeric))
+
+```
+
+### Modello 6 (Senza horsepower)
+```{r}
+fit6 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base + width + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + peak.rpm + highway.mpg, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +width +height  +engine.size +bore + stroke + compression.ratio + peak.rpm + highway.mpg, data=data_used)
+
+imcdiag((fit_numeric))
+
+```
+Ora abbiamo ottenuto un modello con nessun VIF maggiore di 5, ma ancora con qualche TOL minore di 0.3, dunque continuiamo nell'eliminazione delle variabili con TOL minore di 3.
+
+### Modello 7 (Senza width)
+```{r}
+fit7 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base  + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + peak.rpm + highway.mpg, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +height  +engine.size +bore + stroke + compression.ratio + peak.rpm + highway.mpg, data=data_used)
+
+imcdiag((fit_numeric))
+
+```
+
+### Modello 8 (Senza highway.mpg)
+```{r}
+fit8 <- lm(price ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base  + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + peak.rpm, data=data_used)
+
+fit_numeric <- lm(price ~ wheel.base +height  +engine.size +bore + stroke + compression.ratio + peak.rpm, data=data_used)
+
+imcdiag((fit_numeric))
+
+```
+Abbiamo infine ottenuto un modello senza valori di TOL minori di 0.3, procediamo perciò facendo il summary del nostro ultimo modello fittato (fit8).
+
+```{r}
+summary(fit8)
+
+drop1(fit8, test='F')
+```
+Osserviamo che l'R^2 aggiustato di questo modello è leggermente più basso rispetto al precedente e pari a 0.9415. 
+Il modello presenta ancora NA nel summary in corrispondenza di num.of.cylindersthree e num.of.cylinderstwo.
+
+### Diagnostiche fit8
+```{r}
+par(mfrow=c(2,2)) 
+plot(fit8)
+par(mfrow=c(1,1))
+```
+Le diagnostiche del nostro modello sono molto simili a quelle del modello iniziale, ma ora sono tre le osservazioni che hanno leva pari a 1 (18, 47, 123).
+
+# LINEARITà
+### Trasformazione di Box-Cox
+```{r}
+library(MASS)
+boxcoxreg1<-boxcox(fit8)
+title("Lambda")
+lambda=boxcoxreg1$x[which.max(boxcoxreg1$y)]
+lambda
+```
+
+Vediamo che il valore che massimizza la funzione di log-verosimiglianza (e che minimizza l'errore nel calcolo dell'MSE) è 0.1010101. Procediamo con la trasformazione di Box-Cox (anche se il modello non soffre troppo di non linearità)
+
+### Modello 9
+```{r}
+fit9 <- lm(log(price) ~ symboling + make + fuel.type + aspiration + num.of.doors + body.style + drive.wheels + wheel.base  + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio + peak.rpm, data=data_used)
+
+summary(fit9)
+drop1(fit9, test='F')
+```
+L'R^2 aggiustato del modello trasformato è pari a 0.9372, praticamente identico al precedente.
+
+### Diagnostiche fit9
+```{r}
+par(mfrow=c(2,2)) 
+plot(fit9)
+par(mfrow=c(1,1))
+```
+Le diagnostiche del nuovo modello sono migliorate. Il modello è più lineare, soffre meno di eteroschedasticità e i residui sembrano meno asimmetrici. Ci sono ancora però dei valori con leva pari a 1 (18, 47 e 123)
+
+### Trasformazione gam
+Fittiamo il modello fit_gam per vedere se le variabili non significative possono diventarlo se trasformate come ci suggerisce la funzione gam:
+```{r}
+library(mgcv)
+
+fit_gam = gam(log(price) ~ symboling + make + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base+ height + engine.type + num.of.cylinders + engine.size+ s(bore) + s(stroke) + s(compression.ratio) + peak.rpm, data=data_used)
+
+summary(fit_gam)
+```
+Osservando i p-value sembrerebbe che nessuna trasformazione possa essere significativa, ma procediamo osservando i grafici:
+
+```{r}
+par(mfrow=c(2,3)) 
+plot(fit_gam)
+par(mfrow=c(1,1))
+```
+Effettivamente, per quanto riguarda le variabili bore e stroke notiamo un andamento molto lineare, mentre per quanto riguarda compression.ratio l'andamento non è perfettamente lineare, andiamo quindi a inserire una componente quadratica per quanto riguarda compressio.ratio.
+
+### Modello 10
+```{r}
+fit_prova <- lm(log(price) ~ symboling + make + fuel.type + aspiration + num.of.doors + body.style + drive.wheels + wheel.base  + height + engine.type + num.of.cylinders + 
+    engine.size + bore + stroke + compression.ratio +I(compression.ratio^2) + peak.rpm, data=data_used)
+
+summary(fit_prova)
+drop1(fit_prova, test='F')
+```
+Notiamo che la nuova variabile inserita è significativa, quindi la manteniamo nel modello.
+
+Poichè uno dei nostri fattori presenta un numero elevato di livelli, proviamo a vedere se aggregandoli make spiega meglio il prezzo.
+
+### Optimal grouping
+```{r}
+library(factorMerger)
+reduce_levels<-mergeFactors(response=data_used$price, factor=data_used$make)
+plot(reduce_levels, panel='GIC', title='', panelGrid=FALSE)
+og <- cutTree(reduce_levels)
+
+length(og)
+class(og)
+table(og)
+
+data_used$og =as.numeric(og)
+head(data_used)
+data_used$og=as.factor(data_used$og)
+
+table(og, data_used$og)
+plot(data_used$og, data_used$price)
+a<-lm(log(price) ~ make , data=data_used)
+b<-lm(log(price) ~ og, data=data_used)
+summary(a)
+summary(b)
+```
+Vediamo che l'R^2 aggiustato del modello che prevede la trasformazione di price in base alla variabile generata dall'optimal grouping è leggermente superiore a quello del modello che prevede price in base a make. Decidiamo dunque di mantenere la variabile aggregata.
+
+### Modello 11
+```{r}
+fit11 <- lm(log(price) ~ symboling + og + fuel.type + aspiration + num.of.doors + body.style + drive.wheels + wheel.base + height + engine.type + num.of.cylinders + engine.size + bore + 
+stroke + compression.ratio + I(compression.ratio^2) + peak.rpm, data=data_used)
+
+summary(fit11)
+drop1(fit11, test='F')
+```
+Osserviamo un R^2 aggiustato (0.919) leggermente inferiore rispetto a quello precedente, ma un solo NA nel summary.
+
+### Diagnostiche fit11
+```{r}
+par(mfrow=c(2,2)) 
+plot(fit11)
+par(mfrow=c(1,1))
+```
+Le diagnostiche del nostro modello sono molto simili a quelle del modello precedente. Le osservazioni che hanno leva pari ad 1 ora sono solo 2 (18, 47).
+
+# MODEL SELECTION
+```{r}
+library(MASS)
+step <- stepAIC(fit11, direction="both")
+```
+
+### Modello 12
+```{r}
+fit12 <- lm(log(price) ~ symboling + og + fuel.type + aspiration + num.of.doors + 
+    body.style + drive.wheels + wheel.base + engine.type + num.of.cylinders + 
+    engine.size + compression.ratio + I(compression.ratio^2) + 
+    peak.rpm, data=data_used)
+
+summary(fit12)
+
+drop1(fit12, test='F')
+```
+L'R^2 aggiustato (0.9196) è praticamente uguale a quello del modello precedente ed è presente ancora un NA relativo alla variabile num.of.cylinders.
+
+
+### Diagnostiche fit12
+```{r}
+par(mfrow=c(2,2)) 
+plot(fit12)
+par(mfrow=c(1,1))
+```
+I punti con valori di leva pari a 1 sono i 2 del caso precedente (18, 47).
+
+# PUNTI INFLUENTI
+```{r}
+library(car)
+influencePlot(fit12,  main="Influence Plot", sub="Circle size is proportial to Cook's Distance" )
+```
+
+
+Procediamo calcolando le distanze di Cook relative ad ogni osservazione ed inserendole in un dataframe.
+```{r}
+cooksd <- cooks.distance(fit12)
+data_cooks=data.frame(cooksd)
+```
+
+
+### Calcolo n_fit12
+Calcoliamo la numerosità del nostro modello:
+```{r}
+n_fit12=length(fit12$residuals)
+n_fit12
+```
+
+### Soglia
+Calcoliamo la soglia oltre la quale possiamo definire delle osservazioni influenti sul modello, considerando la loro distanza di Cook:
+```{r}
+cutoff <- 4/(n_fit12-length(fit12$coefficients))
+cutoff
+```
+Abbiamo deciso di utilizzare la formula 4/(n-p) poichè stiamo lavorando con una numerosità non troppo elevata.
+Osserviamo che il valore della soglia è pari a 0.02424242.
+
+# Grafico punti influenti
+```{r}
+plot(fit12, which=4, cook.levels=cutoff) 
+abline(h=cutoff, col='red')
+```
+Notiamo che la distanza di Cook di alcune osservazioni supera la soglia calcolata.
+
+### Dataset senza valori influenti
+Creiamo un dataset che contiene solo i valori non influenti
+```{r}
+oss_used <- data_used[-c(10,45,46,130),]
+data_uc <- cbind(oss_used, data_cooks)
+```
+Osserviamo che rimangono 201 osservazioni.
+```{r}
+data_noinflu=data_uc[cooksd!='NaN',]
+data_noinflu=data.frame(data_noinflu[data_noinflu$cooksd < cutoff, ])
+```
+Consideriamo come non influenti sul modello solo le osservazioni che hanno distanza di Cook minore della soglia (0.02424242=4/(n-p)).
+Abbiamo inoltre eliminato le osservazioni con distanza di leva pari a 1 (essendo la distanza di Cook in funzione della leverage, il software ci restituiva valore mancante).
+
+### Modello 13
+```{r}
+fit13 <- lm(log(price) ~ symboling + og + fuel.type + 
+    aspiration + num.of.doors + body.style + drive.wheels + wheel.base + 
+    engine.type + num.of.cylinders + engine.size + compression.ratio + 
+    I(compression.ratio^2) + peak.rpm, data=data_noinflu)
+
+summary(fit13)
+
+drop1(fit13, test='F')
+
+```
+Notiamo che l'R^2 aggiustato è uguale a 0.934, quindi è leggermente aumentato rispetto a quello del modello precedente. 
+Rimangono valori mancanti relativi alle stime di num.of.cylinderstwo. 
+
+### Diagnostiche fit13
+```{r}
+par(mfrow=c(2,2)) 
+plot(fit13)
+par(mfrow=c(1,1)) 
+```
+Osserviamo che le diagnostiche in generale sembrano essere molto simili a quelle del modello precedente.
+Per quanto riguarda però il grafico residui standardizzati vs leverage notiamo che tutte le unità statistiche hanno leverage non superiore a 0.6.
+
+# ETEROSCHEDASTICITà
+### Plot fit13
+```{r}
+plot(fit13, which=3)
+```
+Controlliamo l'assunto di omoschedasticità utilizzando i test, anche se dal grafico sembrerebbe rispettato.
+
+### Breush-Pagan Test
+```{r}
+library(lmtest)
+bptest(fit13)
+```
+
+Proviamo ad effettura anche il test di White (più preciso).
+
+### Test di White
+```{r}
+ncvTest(fit13)
+```
+Siamo portati ad accettare l'ipotesi nulla di omoschedasticità.
+
+Il nostro modello 13 è dunque il modello robusto.
+
+### Confronti 
+```{r}
+ncvTest(fit1)
+ncvTest(fit13)
+```
+Osserviamo che i passaggi intermedi per la costruzione del modello robusto hanno portato alla risoluzione del problema di eteroschedasticità (che era presente nel nostro modello iniziale).
+
+# MODELLO ROBUSTO
+```{r}
+fit_robust <- lm(log(price) ~ symboling + og + fuel.type + 
+    aspiration + num.of.doors + body.style + drive.wheels + wheel.base + 
+    engine.type + num.of.cylinders + engine.size + compression.ratio + 
+    I(compression.ratio^2) + peak.rpm, data=data_noinflu)
+```
+
+### Confronto grafico Y con Y cappuccio starting model e modello finale
+```{r}
+par(mfrow=c(2,2))
+plot(oss_used$price, fit1$fitted.values)
+fit <- lm(fit1$fitted.values~oss_used$price)
+abline(reg=fit, col='red')
+
+log_price <- log(data_noinflu$price)
+
+plot(log_price, fit_robust$fitted.values)
+fit <- lm(fit_robust$fitted.values~log_price)
+abline(reg=fit, col='red')
+par(mfrow=c(1,1))
+```
+Osserviamo che rispetto allo stesso grafico relativo al modello di partenza, i punti associati alle osservazioni con prezzo più alto si discostano meno dalla linea rossa. 
+
+
+# BOOTSTRAP
+### Controllo ipotesi normalità
+```{r}
+shapiro.test(fit_robust$residuals)
+```
+La normalità del nostro modello è rispettata e la numerosità è elevata, dunque l'inferenza è corretta. Lo dimostriamo con la procedura bootstrap: 
+
+```{r}
+library("car")
+fit_boot <- Boot(fit_robust, R=1999)
+summary(fit_boot, high.moments=TRUE)
+```
+
+```{r}
+Confint(fit_boot, level=c(.95))
+```
+Tutte le stime MLE sono contenute negli intervalli boot, quindi possiamo dire che l'inferenza è corretta.
+
+### Grafici
+Intercetta:
+```{r}
+hist(fit_boot, 1, legend='separate')
+```
+Simbolyng-1
+```{r}
+hist(fit_boot, 2, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 3, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 4, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 5, legend='separate')
+```
+```{r}
+hist(fit_boot, 6, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 7, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 8, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 9, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 10, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 11, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 12, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 13, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 14, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 15, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 16, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 17, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 18, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 19, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 20, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 21, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 22, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 23, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 24, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 25, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 26, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 27, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 28, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 29, legend='separate')
+```
+
+Ci sono problemi con la riga 30, num.of.cylinderstwo ha un valore NA!!!!
+
+```{r}
+hist(fit_boot, 31, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 32, legend='separate')
+```
+
+```{r}
+hist(fit_boot, 33, legend='separate')
+```
+
+Problemi con peak.rpm: indice fuori dal limite (forse l'IC è troppo piccolo?)

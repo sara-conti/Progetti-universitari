@@ -1,0 +1,597 @@
+---
+title: "pulizia10-01"
+author: "Enrico Villa"
+date: "2023-01-10"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+mainfont: Calibri
+sizefont: 10pt
+---
+# LETTURA FILE
+\
+```{r}
+library(readxl)
+SOFA <- read_excel("/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA.xlsx",
+     col_types = c("numeric", "text", "numeric", "numeric", "numeric", "numeric",
+                   "numeric", "numeric", "numeric","text", "text", "text", 
+                   "text", "text", "numeric", "date", "date", "numeric", 
+                   "numeric", "text"), 
+     na = "-1" )
+```
+\
+# GESTIONE DATE
+Sono riportate 3 funzioni necessarie per inserire lo / dove è mancante e per sostituire l'8 del 1800 con la data corretta, 1900.
+\
+```{r}
+split_str_by_index <- function(target, index){
+  index <- sort(index)
+  substr(rep(target, length(index) + 1),
+         start = c(1, index),
+         stop = c(index -1, nchar(target)))
+}
+
+interleave <- function(v1,v2)
+{
+  ord1 <- 2*(1:length(v1))-1
+  ord2 <- 2*(1:length(v2))
+  c(v1,v2)[order(c(ord1,ord2))]
+}
+
+insert_str <- function(target, insert, index){
+  insert <- insert[order(index)]
+  index <- sort(index)
+  paste(interleave(split_str_by_index(target, index), insert), collapse="")
+}
+```
+\
+```{r}
+require(stringr)
+for(i in 1:length(SOFA$NASCITA)){
+  if (str_length(SOFA$NASCITA[i]) > 5 & 
+      (length(unlist(gregexpr('/', SOFA$NASCITA[i]))) > 0) &
+      length(unlist(gregexpr('/', SOFA$NASCITA[i]))) < 2){
+    if (unlist(gregexpr('/', SOFA$NASCITA[i]))[1] != 3){
+      SOFA$NASCITA[i] <- insert_str(SOFA$NASCITA[i], "/", 3)}
+    if (tail(unlist(gregexpr('/', SOFA$NASCITA[i])),n=1) != 6){ 
+      SOFA$NASCITA[i] <- insert_str(SOFA$NASCITA[i], "/", 6)}}
+  if (substr(SOFA$NASCITA[i],8,8) != 9 & str_length(SOFA$NASCITA[i]) > 5){
+    SOFA$NASCITA[i] <- str_replace(SOFA$NASCITA[i], "8", "9")
+    SOFA$NASCITA[i] <- as.Date(SOFA$NASCITA[i], format="%d/%m/%Y")
+  }}
+```
+\
+```{r}
+for(i in 1:length(SOFA$NASCITA)){   
+  if((unlist(gregexpr('/', SOFA$NASCITA[i]))[1]) == 3){
+    x <- strptime(as.character(SOFA$NASCITA[i]), "%d/%m/%Y")
+    SOFA$NASCITA[i] <- as.Date(format(x, "%Y-%m-%d"))}}
+```
+\
+Di seguito si riporta il codice utile per rendere le date prima in formato testo (da double) e poi in formato "data" in modo che siano utilizzabili per calcolare la distanza tra tempi e allo stesso tempo siano visualizzate delle date di facile comprensione.
+\
+```{r}
+
+library(readxl)
+date_with_text <- function(x, origin = "1899-12-30"){
+  v <- rep(0:63)
+  num <- suppressWarnings(as.numeric(x))
+  for(i in 1:length(x)){
+    if(x[i]<0){
+      v[i] <- as.Date(num[i], origin = "1970-01-01")
+      if(anyNA(num)){
+        y <- as.character(y)
+        y[is.na(num)] <- as.character(x[is.na(num)])
+    }}
+    else{v[i] <- as.Date(num[i], origin = "1899-12-30")}
+  }
+  return(v)}
+SOFA$NASCITA <- date_with_text(SOFA$NASCITA)
+SOFA$NASCITA <- as.Date(SOFA$NASCITA,origin = "1970-01-01")
+```
+
+# SOFAING
+Il SOFA (Sequential Organ Failure Assessment score) è una scala di punteggio che serve a verificare le condizioni cliniche del paziente.
+\
+```{r}
+table(SOFA$SOFAING)
+```
+Al gruppo categorizzato con 0, buone condizioni cliniche del paziente, appartengono la maggior parte degli individui (44) 
+Si considerano 3 gruppi:
+\
+```{r}
+SOFA$SOFA_CRF <- 0 
+for(i in 1:length(SOFA$SOFAING)){
+  if (SOFA$SOFAING[i] == 1 | SOFA$SOFAING[i] ==2)
+    {SOFA$SOFA_CRF[i] = 1}
+  else if (SOFA$SOFAING[i] == 3 |SOFA$SOFAING[i] == 4)
+    {SOFA$SOFA_CRF[i] = 2}}
+```
+\
+```{r}
+SOFA$SOFA_cat <- 0 
+for(i in 1:length(SOFA$SOFAING)){
+  if (SOFA$SOFAING[i] == 1 | SOFA$SOFAING[i] == 2 | SOFA$SOFAING[i] == 3 |SOFA$SOFAING[i] == 4)
+    {SOFA$SOFA_cat[i] = 1}}
+```
+\
+```{r}
+
+
+SOFA$SOFA_cat1 <- 0 
+for(i in 1:length(SOFA$SOFAING)){
+  if (SOFA$SOFAING[i] == 0 | SOFA$SOFAING[i] == 1)
+  {SOFA$SOFA_cat1[i] = 0}
+  if (SOFA$SOFAING[i] == 2 | SOFA$SOFAING[i] == 3 | SOFA$SOFAING[i] == 4)
+  {SOFA$SOFA_cat1[i] = 1}}
+```
+
+
+
+
+# STATO CIVILE
+Controllare con una table se i dati risultano coerenti con le occorrenze previste
+\
+```{r}
+table(SOFA$STATCIV)
+```
+
+*Categorizzazione di Stato civile*
+\
+```{r}
+SOFA$STATCIV_cat <- 0 
+for(i in 1:length(SOFA$STATCIV)){
+  if (SOFA$STATCIV[i] == 2)
+  {SOFA$STATCIV_cat[i] = 1}
+  else if (SOFA$STATCIV[i] == 1 | SOFA$STATCIV[i] == 5)
+  {SOFA$STATCIV_cat[i] = 2}}
+```
+
+
+# PESO E ALTEZZA
+Controllare se ci sono dati mancanti, quanti sono e poi vedere se sono presenti valori non plausibili.
+
+## Peso
+\
+```{r}
+require(skimr)
+skim_without_charts(SOFA$PESO)
+
+for(i in 1:length(SOFA$PESO)){
+  if (is.na(SOFA$PESO[i])){ i = i + 1}
+  else if(SOFA$PESO[i] == 33){SOFA$PESO[i] = NA}}
+```
+
+
+## Altezza
+\
+```{r}
+summary(SOFA$ALTEZ)
+```
+L'altezza minima di 9 non è plausibile, dunque viene inserito tale valore come mancante.
+\
+```{r}
+for(i in 1:length(SOFA$ALTEZ)){
+  if (is.na(SOFA$ALTEZ[i])){ i = i + 1}
+  else if(SOFA$ALTEZ[i] == 9){SOFA$ALTEZ[i] = NA}}
+```
+
+
+# BMI
+\
+```{r}
+SOFA$BMI <- round(SOFA$PESO / ((SOFA$ALTEZ/100)^2),2)
+```
+
+# CADUTE
+\
+```{r}
+table(SOFA$CADUTE)
+```
+
+# CCSCORE
+Charlson comorbidity index punteggio totale
+0 assenza di comoborbilità
+1-2 leggero
+3-4 moderato
+maggiore di 5 severo
+\
+```{r}
+table(SOFA$CCSCORE)
+```
+\
+```{r}
+SOFA$CCSCORE_cat <- 0
+
+for(i in 1:length(SOFA$CCSCORE)){
+  if (is.na(SOFA$CCSCORE[i])){
+    SOFA$CCSCORE_cat[i] <- NA}
+  else if(SOFA$CCSCORE[i] == 0){
+    SOFA$CCSCORE_cat[i] <- 0}
+  else if(SOFA$CCSCORE[i]  == 1 | SOFA$CCSCORE[i] == 2 | SOFA$CCSCORE[i] == 3){
+    SOFA$CCSCORE_cat[i] <- 1}
+  else if(SOFA$CCSCORE[i] == 4 | SOFA$CCSCORE[i] == 5 | SOFA$CCSCORE[i] == 6){
+    SOFA$CCSCORE_cat[i] <- 2
+  }}
+```
+\
+```{r}
+SOFA$CCSCORE_cat1 <- 0
+
+for(i in 1:length(SOFA$CCSCORE)){
+  if (is.na(SOFA$CCSCORE[i])){
+    SOFA$CCSCORE_cat1[i] <- NA}
+  else if(SOFA$CCSCORE[i] == 0 | SOFA$CCSCORE[i] == 1 |
+          SOFA$CCSCORE[i] == 2){
+    SOFA$CCSCORE_cat1[i] <- 0}
+  else if(SOFA$CCSCORE[i]  == 3 | SOFA$CCSCORE[i] == 4 | 
+          SOFA$CCSCORE[i] == 5  | SOFA$CCSCORE[i]  == 6){
+    SOFA$CCSCORE_cat1[i] <- 1}
+}
+
+```
+
+
+# MMSE
+Il Mini-Mental State Examination (Folstein et al., 1975), è un test neuropsicologico per la valutazione dei disturbi dell'efficienza intellettiva e della presenza di deterioramento cognitivo.
+
+Il MMSE è spesso utilizzato come strumento di screening nell'indagine di soggetti con demenza, e con sindromi neuropsicologiche di natura differente.
+\
+```{r}
+for(i in 1:length(SOFA$MMSE)){
+  if(grepl(",",SOFA$MMSE[i])){
+    SOFA$MMSE[i]  <- gsub(",",".",SOFA$MMSE[i])
+  }}
+
+SOFA$MMSE <- round(as.numeric(SOFA$MMSE),1)
+```
+
+Controllo dei valori plausibili
+\
+```{r}
+skim_without_charts(SOFA$MMSE)
+```
+\
+Categorizzazione in <20: grave compromissione cognitiva
+                    20-24: lieve compromissione cognitiva
+                    => 24: soggetto sano
+
+# ALBUMINA
+\
+```{r}
+for(i in 1:length(SOFA$ALB)){
+  if(grepl(",",SOFA$ALB[i])){
+    SOFA$ALB[i]  <- gsub(",",".",SOFA$ALB[i])
+  }}
+
+SOFA$ALB <- as.numeric(SOFA$ALB)
+```
+
+Controllo dei valori plausibili
+\
+```{r}
+skim_without_charts(SOFA$ALB)
+```
+
+# CALC
+\
+```{r}
+for(i in 1:length(SOFA$CALC)){
+  if(grepl(",",SOFA$CALC[i])){
+    SOFA$CALC[i]  <- gsub(",",".",SOFA$CALC[i])
+  }}
+
+SOFA$CALC <- as.numeric(SOFA$CALC)
+
+```
+
+Controllo dei valori plausibili
+\
+```{r}
+skim_without_charts(SOFA$CALC)
+```
+
+Dato che risulta un soggetto con un valore poco plausibile di CALCIO, il valore viene inserito come mancante. Si utilizza una soglia arbitraria pari a 15 oltre la quale i valori verranno esclusi.
+\
+```{r}
+for(i in 1:length(SOFA$CALC)){
+  if (is.na(SOFA$CALC[i])){ i = i + 1}
+  else if(SOFA$CALC[i] > 15){SOFA$CALC[i] = NA}}
+```
+
+# VITAMINA D
+\
+```{r}
+for(i in 1:length(SOFA$VITD)){
+  if(grepl(",",SOFA$VITD[i])){
+    SOFA$VITD[i]  <- gsub(",",".",SOFA$VITD[i])
+  }}
+SOFA$VITD <- as.numeric(SOFA$VITD)
+skim_without_charts(SOFA$VITD)
+boxplot(SOFA$VITD)
+```
+
+# HBING
+\
+```{r}
+for(i in 1:length(SOFA$HBING)){
+  if(grepl(",",SOFA$HBING[i])){
+    SOFA$HBING[i]  <- gsub(",",".",SOFA$HBING[i])
+  }}
+SOFA$HBING <- as.numeric(SOFA$HBING)
+skim_without_charts(SOFA$HBING)
+```
+
+# TEMPO DI RICOVERO
+\
+```{r}
+for(i in 1:length(SOFA$TEMPRIC)){
+  if (is.na(SOFA$TEMPRIC[i])){ i = i + 1}
+  else if(SOFA$TEMPRIC[i] == -2){SOFA$TEMPRIC[i] = NA}}
+skim_without_charts(SOFA$TEMPRIC)
+```
+
+# DATA DI DIMISSIONE
+Sembra che sia già codificata nel modo corretto
+\
+```{r}
+SOFA$DATDIM <- as.Date(SOFA$DATDIM, format="%d/%m/%Y", origin="1989-30-12")
+```
+
+# DATA DELL'INTERVENTO
+Sembra che sia già codificata nel modo corretto
+\
+```{r}
+SOFA$DATINT <- as.Date(SOFA$DATINT, format="%m/%d/%Y", origin="1989-30-12")
+```
+
+# DURATA DELL'INTERVENTO
+\
+```{r}
+skim_without_charts(SOFA$INTDURAT)
+```
+
+# ANESTESIA 
+\
+```{r}
+table(SOFA$ANEST)
+```
+
+## Categorizzazione di Anestesia
+\
+```{r}
+SOFA$ANEST_cat <- 0 
+for(i in 1:length(SOFA$ANEST)){
+  if (SOFA$ANEST[i] == 1)
+  {SOFA$ANEST_cat[i] = 1}
+  else if (SOFA$ANEST[i] == 2 | SOFA$ANEST[i] == 4 |SOFA$ANEST[i] == 5)
+  {SOFA$ANEST_cat[i] = 2}}
+```
+
+
+# DATA DI DECESSO
+Viene condificata il *SI è RIFIUTATA* come dato mancante daata finale dello studio
+\
+```{r}
+# SI è RIFIUTATA --> NA
+for(i in 1:length(SOFA$`DATA DECESSO`)){
+  if (is.na(SOFA$`DATA DECESSO`[i]))
+    { i = i + 1}
+  else if(SOFA$`DATA DECESSO`[i] == "SI è RIFIUTATA")
+    {SOFA$`DATA DECESSO`[i] = "2013-01-31"}}
+```
+
+_________________________________________________________________________________
+
+
+```{r}
+library(readxl)
+# in teoria non serve richiamare la funzione, basta passargli l'orgine 1899-12-30,
+# ma la funzione è già stata utilizzata sopra
+date_with_text <- function(x, origin = "1899-12-30"){
+  num <- suppressWarnings(as.numeric(x))
+  y <- as.Date(num, origin = origin)
+  if(anyNA(num)){
+    y <- as.character(y)
+    y[is.nan(num)] <- as.character(x[is.nan(num)])
+  }
+  y
+}
+
+SOFA$`DATA DECESSO` <-  date_with_text(SOFA$`DATA DECESSO`)
+
+```
+
+\
+```{r}
+SOFA$`DATA DECESSO` <- as.Date(SOFA$`DATA DECESSO`)
+```
+\
+
+# Creazione della variabile EVENTO
+```{r}
+SOFA$evento <- 1
+for(i in 1:length(SOFA$`DATA DECESSO`)){
+  if (is.na(SOFA$`DATA DECESSO`[i]))
+  {SOFA$`DATA DECESSO`[i] <- "2013-01-31"}
+  if(SOFA$`DATA DECESSO`[i] == "2013-01-31")
+  {SOFA$evento[i] <- 0}
+}
+SOFA$`DATA DECESSO` <- as.Date(SOFA$`DATA DECESSO`, format="%Y-%m-%d")
+```
+
+
+
+**cambio date intervento non plausibili**
+\
+```{r}
+SOFA$DATINT[13] <- str_replace(SOFA$DATINT[13], "2015", "2012")
+SOFA$DATINT[16] <- str_replace(SOFA$DATINT[16], "2012", "2011")
+```
+
+
+
+# ETA' ALL'INTERVENTO
+\
+```{r}
+diff <- as.integer(SOFA$DATINT - SOFA$NASCITA)
+SOFA$ETA <- diff%/%365
+```
+
+
+# TIME
+Per la sopravvivenza
+Costruire la variabile time come differenza tra il decesso e la data dell'intervento in giorni, altrimenti si pone pari a 90 giorni e la variabile event sarà 1 se la data di morte è presente, 0 altrimenti.
+\
+```{r}
+SOFA$time <- as.integer(SOFA$`DATA DECESSO` - SOFA$DATINT)
+for(i in 1:length(SOFA$`DATA DECESSO`)){
+  if (SOFA$time[i] < 0){SOFA$time[i]<- NA}}
+
+SOFA <- SOFA[!is.na(SOFA$time), ]
+```
+
+# DATASET DATI MANCANTI
+\
+```{r}
+SOFA_mancanti <- SOFA[c(13,16,19,23,24,33,35,39,42,50,51,52,55,61,  1,6,9,11,12,27,32,40,46,48,57,59,62 ), ]
+SOFA_mancanti <- SOFA_mancanti[, c("PAZIENTE", "PESO", "ALTEZ", "CADUTE", "MMSE", "ALB", "CALC", "TEMPRIC", "INTDURAT", "VITD" ,"SOFAING")]
+SOFA_mancanti
+```
+\
+```{r}
+table(SOFA_mancanti$SOFAING, SOFA_mancanti$PESO)
+```
+
+# DATASET NON IMPUTATO
+
+```{r}
+SOFA_grezzo <- SOFA[-c(13,16,19,23,24,33,35,39,42,50,51,52,55,61),]
+```
+\
+```{r}
+SOFA_grezzo$CCSCORE_cat1 <- factor(SOFA_grezzo$CCSCORE_cat1, levels = c(0,1),
+                               labels = c("Comorbidità non severa",
+                                          "Severa comorbidità"))
+table(SOFA_grezzo$CCSCORE_cat1, SOFA_grezzo$evento)
+```
+
+
+# IMPUTAZIONE DATI
+Imputazione dei dati che ha senso fare eventualmente sulla variabile VITD.
+Metodi possibili: 
+- media rispetto alla categoria di SOFA di appartenenza
+- imputazione MICE
+\
+```{r}
+require(mice)
+SOFA_subset <- subset(SOFA, select = c(BMI, MMSE, ALB, CALC, 
+                                              HBING, TEMPRIC, INTDURAT, CADUTE))
+imputati <- mice(data = SOFA_subset, method = 'pmm', m = 1, 
+                 maxit = 100, seed = 1234)
+```
+\
+```{r}
+xyplot(imputati, BMI ~ MMSE+ALB+CALC+HBING+TEMPRIC+INTDURAT)
+```
+
+\
+```{r}
+library(purrr)
+j=k=l=m=n=o=p=1
+for (i in 1:nrow(SOFA)){
+  if (is.na(SOFA$BMI[i])) {
+    SOFA$BMI[i] <- imputati$imp$BMI[j,1]
+    j = j+1
+  }
+  if (is.na(SOFA$CALC[i])) {
+    SOFA$CALC[i] <- imputati$imp$CALC[k,1]
+    k = k+1
+  }
+  if (is.na(SOFA$MMSE[i])) {
+    SOFA$MMSE[i] <- imputati$imp$MMSE[l,1]
+    l = l+1
+  }
+  if (is.na(SOFA$TEMPRIC[i])) {
+    SOFA$TEMPRIC[i] <- imputati$imp$TEMPRIC[m,1]
+    m = m+1
+  }
+  if (is.na(SOFA$ALB[i])) {
+    SOFA$ALB[i] <- imputati$imp$ALB[n,1]
+    n = n+1
+  }
+  if (is.na(SOFA$INTDURAT[i])) {
+    SOFA$INTDURAT[i] <- imputati$imp$INTDURAT[o,1]
+    o = o+1
+  }
+  if (is.na(SOFA$CADUTE[i])) {
+    SOFA$CADUTE[i] <- imputati$imp$CADUTE[p,1]
+    p = p+1
+  }
+}
+```
+\
+```{r}
+skim_without_charts(SOFA)
+```
+
+# Ricodifica MMSE_cat
+\
+```{r}
+for(i in 1:length(SOFA$MMSE)){
+  if (is.na(SOFA$MMSE[i])){
+    SOFA$MMSE_cat[i] <- NA}
+  else if(SOFA$MMSE[i] < 20){
+    SOFA$MMSE_cat[i] <- 2}
+  else if(SOFA$MMSE[i] <= 24 & SOFA$MMSE[i] >= 20){
+    SOFA$MMSE_cat[i] <- 1}
+  else if(SOFA$MMSE[i] > 24){
+    SOFA$MMSE_cat[i] <- 0
+  }}
+
+for(i in 1:length(SOFA_grezzo$MMSE)){
+  if (is.na(SOFA_grezzo$MMSE[i])){
+    SOFA_grezzo$MMSE_cat[i] <- NA}
+  else if(SOFA_grezzo$MMSE[i] < 20){
+    SOFA_grezzo$MMSE_cat[i] <- 2}
+  else if(SOFA_grezzo$MMSE[i] <= 24 & SOFA_grezzo$MMSE[i] >= 20){
+    SOFA_grezzo$MMSE_cat[i] <- 1}
+  else if(SOFA_grezzo$MMSE[i] > 24){
+    SOFA_grezzo$MMSE_cat[i] <- 0
+  }}
+```
+
+\
+```{r}
+SOFA_pulito$CCSCORE_cat1 <- factor(SOFA_pulito$CCSCORE_cat1, levels = c(0,1),
+                               labels = c("Comorbidità non severa",
+                                          "Severa comorbidità"))
+table(SOFA_pulito$CCSCORE_cat1, SOFA_pulito$evento)
+```
+
+
+# SOFA_PULITO
+\
+```{r}
+library(openxlsx)
+write.xlsx(SOFA,"/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_pulito1.xlsx",colNames = TRUE)
+```
+\
+```{r}
+SOFA_pulito <- SOFA
+save(SOFA_pulito, file = "/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_pulito1.Rdata")
+```
+
+
+# SOFA_grezzo
+\
+```{r}
+library(openxlsx)
+write.xlsx(SOFA_grezzo,"/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_grezzo.xlsx",colNames = TRUE)
+```
+\
+```{r}
+save(SOFA_grezzo, file = "/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_grezzo.Rdata")
+```

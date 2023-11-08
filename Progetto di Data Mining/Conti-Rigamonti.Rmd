@@ -1,0 +1,580 @@
+---
+title: "Progetto DM"
+author: "Rigamonti Vera, Conti Sara"
+output: word_document
+---
+### Importazione dati
+```{r}
+options(scipen=999)
+data <- read.csv("dati.CSV", sep=";", na.strings=c("NA","NaN"))
+```
+Il dataset considerato contiene dati relativi a 4238 soggetti. 
+L'outcome binario è TenYearCHD e indica la presenza o meno di malattie cardiache dopo 10 anni dalla rilevazione dei dati. 
+Le variabili indipendenti indicano alcune caratteristiche degli individui (sesso, età, educazione, ...) e sono sia continue che fattori (binari o su più livelli). 
+
+# STEP1: FIT MODELLI
+
+### Controllo e sistemazione variabili
+```{r}
+library(funModeling)
+library(dplyr)
+
+str(data)
+
+data$male <- as.factor(data$male) 
+data$education <- as.factor(data$education)
+data$currentSmoker <- as.factor(data$currentSmoker) 
+data$cigsPerDay <- as.numeric(data$cigsPerDay) 
+data$BPMeds <- as.factor(data$BPMeds)
+data$prevalentStroke <- as.factor(data$prevalentStroke)
+data$prevalentHyp <- as.factor(data$prevalentHyp)
+data$diabetes <- as.factor(data$diabetes)
+data$totChol  <- as.numeric(data$totChol)
+data$BMI  <- as.numeric(data$BMI)
+data$heartRate  <- as.numeric(data$heartRate)
+data$glucose  <- as.numeric(data$glucose)
+data$TenYearCHD <- as.factor(data$TenYearCHD)
+
+str(data)
+
+status <- df_status(data, print_results = F)
+head(status %>% arrange(type))
+head(status %>% arrange(unique))
+head(status %>% arrange(-p_na))
+```
+Sono state modificate le variabili non importate correttamente.
+Non è stata eliminata alcuna variabile perchè nessuna presenta più del 20/30% di valori mancanti. 
+
+### Distribuzione del target 
+```{r}
+table(data$TenYearCHD)/nrow(data)
+
+plot(data$TenYearCHD, col="red")
+```
+Solo il 15% circa dei soggetti (644) ha TenYearCHD pari a 1 (evento).
+
+### Covariate numeriche e covariate fattori
+```{r}
+X <- data[,-16]
+
+X_numeric <- X %>% dplyr::select_if(is.numeric)
+X_factor <- X %>% dplyr::select_if(is.factor)
+
+colnames(X_numeric)
+colnames(X_factor)
+```
+
+### Statistiche descrittive, grafico correlazioni e conteggio valori mancanti
+```{r}
+summary(data)
+
+library(PerformanceAnalytics)
+
+chart.Correlation(X_numeric , histogram=TRUE, pch=22)
+
+sapply(data, function(x)(sum(is.na(x)))) 
+```
+L'unica correlazione bivariata discretamente alta (0.78) è quella tra sysBP e diaBP. 
+
+### Imputazione
+```{r}
+library(mice)
+
+imp <- mice(X_numeric, m=15, maxit=10, meth='pmm', seed=500)
+
+X_numeric_imputed <- complete(imp,1)  
+
+sapply(X_numeric_imputed, function(x)(sum(is.na(x)))) 
+
+library(Hmisc)
+
+X_factor_imputed <- X_factor 
+X_factor_imputed$education <- impute(X_factor_imputed$education)
+X_factor_imputed$BPMeds <- impute(X_factor_imputed$BPMeds)
+
+sapply(X_factor_imputed, function(x)(sum(is.na(x)))) 
+```
+Sono stati imputati i valori mancanti delle covariate numeriche sfruttando la funzione mice, mentre quelli relativi ai fattori con il comando impute. 
+
+```{r}
+y <- data$TenYearCHD
+data_imputed <- cbind(y, X_numeric_imputed, X_factor_imputed)
+
+sapply(data_imputed, function(x)(sum(is.na(x)))) 
+```
+
+### Collinearità
+```{r}
+library(caret)
+
+C <- cor(X_numeric_imputed)
+
+correlatedPredictors <- findCorrelation(C, cutoff = 0.75, names = TRUE)
+correlatedPredictors
+
+library(plyr)
+combos <- combn(ncol(X_factor_imputed),2)
+adply(combos, 2, function(x) {
+  test <- chisq.test(X_factor_imputed[, x[1]],X_factor_imputed[, x[2]])
+  tab  <- table(X_factor_imputed[, x[1]], X_factor_imputed[, x[2]])
+  out <- data.frame("Row" = colnames(X_factor_imputed)[x[1]]
+                    , "Column" = colnames(X_factor_imputed[x[2]])
+                    , "Chi.Square" = round(test$statistic,3)
+                    , "df"= test$parameter
+                    , "p.value" = round(test$p.value, 3)
+                    , "n" = sum(table(X_factor_imputed[,x[1]], X_factor_imputed[,x[2]]))
+                    , "u1" =length(unique(X_factor_imputed[,x[1]]))-1
+                    , "u2" =length(unique(X_factor_imputed[,x[2]]))-1
+                    , "nMinu1u2" =sum(table(X_factor_imputed[,x[1]], X_factor_imputed[,x[2]]))* min(length(unique(X_factor_imputed[,x[1]]))-1 , length(unique(X_factor_imputed[,x[2]]))-1) 
+                    , "Chi.Square norm"  =test$statistic/(sum(table(X_factor_imputed[,x[1]], X_factor_imputed[,x[2]]))* min(length(unique(X_factor_imputed[,x[1]]))-1 , length(unique(X_factor_imputed[,x[2]]))-1)) 
+  )
+  
+  
+  return(out)
+  
+}) 
+```
+Per quanto riguarda le covariate numeriche, quella che causa collinearità è sysBP (come già osservato), mentre le coppie di fattori non restituiscono alcun Chi-quadro normalizzato maggiore di 0.9. 
+SysBp non viene eliminata poichè la correlazione non è eccessivamente elevata, il pre-processing è diverso per ogni modello e verrà fatto in seguito. 
+
+### Zero variance / near zero variance 
+```{r}
+nzv <- nearZeroVar(data_imputed, saveMetrics = TRUE)
+nzv 
+```
+Nessuna variabile ha varianza pari a 0, mentre BPMeds, prevalentStroke e diabetes soffrono di near zero variance. 
+Anche in questo caso, il pre-processing verrà fatto in seguito. 
+
+### Divisione training dataset e testing dataset
+```{r}
+c <- createDataPartition(y=data_imputed$y,times=1,p=.05)
+score <- data_imputed[c$Resample1, ]
+data_imputed <- data_imputed[-c$Resample1, ]
+
+table(score$y)/nrow(score)
+
+cpart_imputed <- createDataPartition(y=data_imputed$y,times=1,p=.6)
+train_imputed <- data_imputed[cpart_imputed$Resample1,]
+test_imputed <- data_imputed[-cpart_imputed$Resample1,]
+
+table(train_imputed$y)/nrow(train_imputed)
+table(test_imputed$y)/nrow(test_imputed)
+
+score <- score[,-1]
+```
+Il dataset di partenza viene suddiviso in training, test e score (campionamento stratificato). 
+
+### Target per caret 
+```{r}
+data$r=ifelse(data$TenYearCHD=="1","r1","r0")
+data_imputed$r=ifelse(data_imputed$y=="1","r1","r0")
+
+train_imputed$r=ifelse(train_imputed$y=="1","r1","r0")
+test_imputed$r=ifelse(test_imputed$y=="1","r1","r0")
+```
+
+In seguito vengono fittati diversi modelli sul dataset di training.
+Ognuno viene tunato in modo da massimizzare la specificity, in quanto l'evento di interesse è il verificarsi della malattia, quindi si vogliono massimizzare i TP e minimizzare i FN.
+Inoltre, ogni volta viene applicato un diverso pre-processing in base al modello che si considera. 
+
+### Glm senza model selection 
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+glm <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes,
+          data=train_imputed, method="glm", metric="Spec", 
+          trControl=ctrl, tuneLength=5, trace=TRUE, na.action=na.pass, preProcess=c("corr", "nzv", "BoxCox"))
+glm
+
+confusionMatrix(glm)
+```
+Nonostante l'accuracy sia abbastanza elevata (0.85 circa), la percentuale di FN è piuttosto alta (specificity=0.05 circa). 
+
+### Knn con model selection (da modello logistico)
+```{r}
+glm2 <- glm(y~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes,
+          data=train_imputed, family=binomial(link="logit"))
+drop1(glm2, test="LRT")
+```
+
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(k=seq(5,20,3))
+knn <- train(r~age+cigsPerDay+totChol+sysBP+glucose+male+prevalentStroke,
+          data=train_imputed, method="knn", metric="Spec",
+          trControl=ctrl, tuneLength=5, na.action=na.pass,
+          tuneGrid=grid, preProcess=c("scale", "corr", "nzv"))
+knn
+
+plot(knn)
+confusionMatrix(knn)
+```
+K=5 massimizza la specificity (0.12 circa), mentre l'accuracy è pari a 0.83 circa. 
+
+### Lasso 
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(.alpha=1, .lambda=seq(0, 1, by = 0.01))
+lasso <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes,
+            data=train_imputed, method="glmnet", metric="Spec",
+            trControl=ctrl, tuneLength=5, na.action=na.pass,
+            tuneGrid=grid)
+lasso
+
+plot(lasso)
+confusionMatrix(lasso)
+```
+Lambda=0 massimizza la specificity (0.09 circa), mentre l'accuracy è pari a 0.85 circa. 
+
+### Naive Bayes
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+naivebayes <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes,
+                 data=train_imputed, method="naive_bayes", metric="Spec",
+                 trControl=ctrl, tuneLength=5, na.action=na.pass, preProcess=c("corr", "nzv")) 
+naivebayes
+
+plot(naivebayes)
+confusionMatrix(naivebayes)
+```
+Usekernel=FALSE massimizza la specificity (0.27 circa), mentre l'accuracy è pari a 0.81 circa. 
+
+### PLS
+```{r}
+library(pls)
+
+set.seed(1234)
+Control <- trainControl(method="cv",number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+pls <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes, 
+          data=train_imputed, method="pls", metric="Spec",
+          trControl=Control, tuneLength=5)
+pls
+
+plot(pls)
+confusionMatrix(pls)
+```
+Ncomp=5 massimizza la specificity (0.03 circa), mentre l'accuracy è pari a 0.85 circa.
+
+### Tree
+```{r}
+set.seed(1)
+cvCtrl <- trainControl(method="cv", number=10, search="grid", classProbs = TRUE, summaryFunction=twoClassSummary, savePredictions=TRUE)
+tree <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes, 
+              data=train_imputed, method="rpart", metric="Spec",
+                      tuneLength=10,
+                      trControl=cvCtrl, na.action=na.pass)
+tree
+
+plot(tree)
+confusionMatrix(tree)
+```
+Cp=0.0009082652 massimizza la specificity (0.14 circa), mentre l'accuracy è pari a 0.81 circa.
+
+### Importanza variabili albero 
+```{r}
+varImp(object=tree)
+plot(varImp(object=tree), main="train tuned-Variable Importance")
+```
+Si considerano come importanti le variabili la cui importanza relativa è superiore al 20% di quella più importante (sysBP).
+Si escludono quindi cigsPerDay, diabetes, prevalentStroke, education, BPMeds e currentSmoker. 
+
+### Model selection albero e nuovi training e test
+```{r}
+train_tree <- train_imputed[,c("age","sysBP","diaBP","glucose","totChol","prevalentHyp","BMI",
+                       "male","heartRate")]
+train_tree=cbind(train_imputed$r, train_tree)
+head(train_tree)
+names(train_tree)[1] <- "r"
+head(train_tree)
+
+test_tree=test_imputed[,c("age","sysBP","diaBP","glucose","totChol","prevalentHyp","BMI",
+                       "male","heartRate")]
+test_tree=cbind(test_imputed$r, test_tree)
+head(test_tree)
+names(test_tree)[1] <- "r"
+head(test_tree)
+```
+
+### Knn con model selection (da albero)
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(k=seq(5,20,3))
+knn2 <- train(r~.,
+          data=train_tree, method="knn", metric="Spec",
+          trControl=ctrl, tuneLength=5, na.action=na.pass,
+          tuneGrid=grid, preProcess=c("scale", "corr", "nzv"))
+knn2
+
+plot(knn)
+confusionMatrix(knn)
+```
+K=5 massimizza la specificity (0.06 circa), mentre l'accuracy è pari a 0.83 circa.
+
+### Glm con model selection (da albero)
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+glm2 <- train(r~., data=train_tree, method="glm", metric="Spec", 
+          trControl=ctrl, tuneLength=5, trace=TRUE, na.action=na.pass, preProcess=c("corr", "nzv", "BoxCox"))
+glm2
+
+confusionMatrix(glm2)
+```
+Anche in questo caso, nonostante l'accuracy sia abbastanza elevata (0.85 circa), la percentuale di FN è piuttosto alta (specificity=0.03 circa). 
+
+### PLS con model selection (da albero)
+```{r}
+set.seed(1234)
+Control <- trainControl(method="cv",number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+pls2 <- train(r~., 
+          data=train_tree, method="pls", metric="Spec",
+          trControl=Control, tuneLength=5)
+pls2
+
+plot(pls2)
+confusionMatrix(pls2)
+```
+Ncomp=4 massimizza la specificity (0.02 circa), mentre l'accuracy è pari a 0.85 circa. 
+
+### Random forest
+```{r}
+set.seed(1)
+control <- trainControl(method="cv", number=10, search="grid", summaryFunction=twoClassSummary, classProbs = TRUE)
+tunegrid <- expand.grid(.mtry=c(1:5))
+rf <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes, 
+            data=train_imputed, method="rf", metric="Spec", 
+            tuneGrid=tunegrid, ntree=250, trControl=control, na.action=na.pass)
+rf
+
+plot(rf)
+confusionMatrix(rf)
+```
+Mtry=4 massimizza la specificity (0.06 circa), mentre l'accuracy è pari a 0.85 circa. 
+
+### Rete neurale
+```{r}
+set.seed(1)
+metric <- "Spec"
+ctrl <- trainControl(method="cv", number=10, search="grid", summaryFunction=twoClassSummary, classProbs=T)
+rete <- train(r~age+cigsPerDay+totChol+sysBP+diaBP+BMI+heartRate+glucose
+               +male+education+currentSmoker+BPMeds+prevalentStroke+prevalentHyp+diabetes, data=train_imputed,
+                     method="nnet",
+                     preProcess=c("range","corr","nzv"), 
+                     metric=metric, trControl=ctrl,
+                     trace=TRUE,
+                     maxit=300,
+              na.action=na.pass)
+rete
+
+plot(rete)
+confusionMatrix(rete)
+
+library(NeuralNetTools)
+library(nnet)
+library(glmnet)
+
+plotnet(rete, alpha=0.6)
+```
+Size=5 e decay=0.1 massimizza la specificity (0.09 circa), mentre l'accuracy è pari a 0.85 circa. 
+
+Si procede con il confronto dei modelli fittati utilizzando il dataset di validation. 
+
+# STEP2: ASSESSMENT
+
+### Comparazione risultati crossvalidati (no vero assessment)
+```{r}
+results <- resamples(list(glm=glm, knn=knn, lasso=lasso, naivebayes=naivebayes, pls=pls, tree=tree, knn2=knn2, glm2=glm2, pls2=pls2, rf=rf, rete=rete))
+summary(results)
+bwplot(results)
+```
+Il modello naivebayes è quello con specificity più elevata, ma è anche il più instabile (maggiore variabilità). 
+
+### Curve ROC
+```{r}
+test_imputed$p_knn <- predict(knn, test_imputed, "prob")[,2]
+test_imputed$p_tree <- predict(tree, test_imputed, "prob")[,2]
+test_imputed$p_naivebayes <- predict(naivebayes, test_imputed, "prob")[,2]
+test_tree$p_knn2 <- predict(knn2, test_tree, "prob")[,2]
+test_imputed$p_glm <- predict(glm, test_imputed, "prob")[,2]
+test_imputed$p_lasso <- predict(lasso, test_imputed, "prob")[,2]
+test_imputed$p_rf <- predict(rf, test_imputed, "prob")[,2]
+test_imputed$p_pls <- predict(pls, test_imputed, "prob")[,2]
+test_tree$p_glm2 <- predict(glm2, test_tree, "prob")[,2]
+test_tree$p_pls2 <- predict(pls2, test_tree, "prob")[,2]
+test_imputed$p_rete <- predict(rete, test_imputed, "prob")[,2]
+
+library(pROC)
+
+r_knn <- roc(r~p_knn, data=test_imputed)
+r_tree <- roc(r~p_tree, data=test_imputed)
+r_naivebayes <- roc(r~p_naivebayes, data=test_imputed)
+r_knn2 <- roc(r~p_knn2, data=test_tree)
+r_glm <- roc(r~p_glm, data=test_imputed)
+r_lasso <- roc(r~p_lasso, data=test_imputed)
+r_rf <- roc(r~p_rf, data=test_imputed)
+r_pls <- roc(r~p_pls, data=test_imputed)
+r_glm2 <- roc(r~p_glm2, data=test_tree)
+r_pls2 <- roc(r~p_pls2, data=test_tree)
+r_rete <- roc(r~p_rete, data=test_imputed)
+
+plot(r_knn)
+plot(r_tree, add=T, col="red")
+plot(r_naivebayes, add=T, col="blue")
+plot(r_knn2, add=T, col="orange")
+plot(r_glm, add=T, col="violet")
+plot(r_lasso, add=T, col="green")
+plot(r_rf, add=T, col="pink")
+plot(r_pls, add=T, col="yellow")
+plot(r_glm2, add=T, col="light blue")
+plot(r_pls2, add=T, col="brown")
+plot(r_rete, add=T, col="grey")
+```
+Poichè le curve ROC si sovrappongono, procediamo analizzando le curve lift dei modelli che sembrano avere ROC migliore.
+
+### Lift
+```{r}
+gain_lift(data=test_imputed, score='p_glm', target='r')
+gain_lift(data=test_imputed, score='p_lasso', target='r')
+gain_lift(data=test_imputed, score='p_pls', target='r')
+gain_lift(data=test_imputed, score='p_rete', target='r')
+gain_lift(data=test_imputed, score='p_naivebayes', target='r')
+gain_lift(data=test_tree, score='p_glm2', target='r')
+gain_lift(data=test_imputed, score='p_rf', target='r')
+gain_lift(data=test_tree, score='p_pls2', target='r')
+```
+Tenendo conto del 20% della popolazione e osservando le curve lift, si sceglie come modello vincente il lasso (lift=2.15 e cumulative gain=43%).
+
+In seguito si fissa la soglia che massimizza la misura di interesse (specificity), si ricavano i valori previsti del target e si valuta la metrica classificativa scelta sulla matrice di confusione considerando dati di validation. 
+
+# STEP3: SCELTA SOGLIA
+
+### Misure rispetto alle soglie
+```{r}
+library(dplyr, warn.conflicts=F)
+options(dplyr.summarise.inform=F)
+
+test_imputed$risposta <- ifelse(test_imputed$y=="1","M","S")
+head(test_imputed$risposta)
+test_imputed$ProbM <- test_imputed$p_lasso
+
+soglia <- seq(from=0, to=1, by=0.01)
+prop_table <- data.frame(soglia=soglia, prop_true_M=NA,  prop_true_S=NA, true_M=NA,  true_S=NA ,fn_M=NA)
+
+for (soglia in soglia) {
+  pred <- ifelse(test_imputed$ProbM>soglia, "M", "S")
+  pred_t <- ifelse(pred==test_imputed$risposta, TRUE, FALSE)
+  
+  group <- data.frame(test_imputed, "pred"=pred_t) %>%
+    group_by(risposta, pred) %>%
+    dplyr::summarise(n=n())
+  
+  group_M <- filter(group, risposta=="M")
+  
+  true_M <- sum(filter(group_M, pred==TRUE)$n)
+  prop_M <- sum(filter(group_M, pred==TRUE)$n)/sum(group_M$n)
+  
+  prop_table[prop_table$soglia==soglia, "prop_true_M"] <- prop_M
+  prop_table[prop_table$soglia==soglia, "true_M"] <- true_M
+  
+  fn_M=sum(filter(group_M, pred==FALSE)$n)
+  prop_table[prop_table$soglia==soglia, "fn_M"] <- fn_M
+  
+  
+  group_S <- filter(group, risposta=="S")
+  
+  true_S <- sum(filter(group_S, pred==TRUE)$n)
+  prop_S <- sum(filter(group_S, pred==TRUE)$n)/sum(group_S$n)
+  
+  prop_table[prop_table$soglia==soglia, "prop_true_S"] <- prop_S
+  prop_table[prop_table$soglia==soglia, "true_S"] <- true_S
+  
+}
+
+head(prop_table, n=10)
+```
+Come già detto, la metrica di interesse è la specificity (prop_true_S, dove S=sani).
+
+### Altre misure 
+```{r}
+library(ROCR)
+
+predRoc <- prediction(test_imputed$ProbM,test_imputed$y)
+
+prop_table$n=nrow(test_imputed) # n = numerosità test_imputed
+prop_table$fp_M=nrow(test_imputed)-prop_table$true_S-prop_table$true_M-prop_table$fn_M # FP
+prop_table$acc=(prop_table$true_S+prop_table$true_M)/nrow(test_imputed) # acc
+prop_table$prec_M=prop_table$true_M/(prop_table$true_M+prop_table$fp_M) # precision
+prop_table$F1=2*(prop_table$prop_true_M*prop_table$prec_M)/(prop_table$prop_true_M+prop_table$prec_M) # F1
+```
+
+```{r}
+tail(prop_table)
+head(prop_table)
+
+library(Hmisc)
+
+prop_table$prec_M=impute(prop_table$prec_M, 1)
+prop_table$F1=impute(prop_table$F1, 0)
+
+tail(prop_table)
+head(prop_table)
+
+colnames(prop_table)
+
+prop_table2 <- prop_table[,-c(4:8)] 
+head(prop_table2)
+
+library(tidyr)
+
+gathered <- prop_table2 %>%
+  gather(x, y, prop_true_M:F1)
+head(gathered)
+
+library(ggplot2)
+
+gathered %>%
+  ggplot(aes(x=soglia, y=y, color=x)) +
+  geom_point() +
+  geom_line() +
+  scale_color_brewer(palette="Set1") +
+  labs(y="measures",
+       color="M: event\nS: nonevent")
+```
+La soglia che consente di avere una specificity soddisfacente e al tempo stesso una discreta sensibility è 0.2. 
+
+### Predetti sul validation e matrice di confusione
+```{r}
+predetti <- ifelse(test_imputed$p_lasso>0.2, "r1", "r0")
+
+library (caret)
+
+predetti <- as.factor(predetti)
+r <- as.factor(test_imputed$r)
+confusionMatrix(predetti, r, positive="r1")
+```
+Con la soglia considerata, si ottiene una specificity pari all'80% circa, una sensitivity pari al 50% circa e un'accuracy pari al 74% circa.
+
+Poichè il modello è abbastanza soddisfacente, si procede con la classificazione di nuovi soggetti. 
+
+# STEP4: SCORE NUOVE OSSERVAZIONI
+
+### Simulazione score dataset e previsione
+```{r}
+score$prob <- predict(lasso, score, "prob")
+head(score$prob)
+
+probM <- score$prob[,2]
+score$pred_y=ifelse(probM>0.2, "M","S")
+head(score)
+```

@@ -1,0 +1,166 @@
+---
+title: "Passeggeri Conti Rigamonti"
+author: "Sara Conti"
+date: "11/11/2020"
+output: word_document
+---
+# IMPORTAZIONE DATI
+```{r}
+data <- read.csv("AirPassengers.csv", sep=';', dec='.')
+yt <- ts(data, frequency=12, start=c(1949,1))
+```
+
+# GRAFICO DELLA SERIE 
+```{r}
+plot.ts(yt)
+```
+Osserviamo che la varianza non è costante e quindi applichiamo una trasformazione logaritmica per stabilizzarla.
+
+# TRASFORMAZIONE LOGARITMICA
+```{r}
+logyt <- log(yt)
+
+plot(logyt)
+```
+La varianza ora è stabile. 
+
+### ACF E PACF
+```{r}
+library(astsa)
+acf2(logyt,48)
+```
+Componente stagionale: ipotizziamo componenti AR(0) e MA(3).
+Componente non stagionale: ipotizziamo componente AR(1) mentre, per quanto riguarda quella a media mobile, vediamo che le tutte le autocorrelazioni sono molto elevate. 
+
+Procediamo lavorando prima sulla componente stagionale.  
+
+# COMPONENTE STAGIONALE 
+### Controllo stagionalità 
+```{r}
+flown <- matrix(logyt, ncol=12, byrow=TRUE)
+col.means <- apply(flown, 2, mean)
+plot(col.means, type='b', main='Monthly Means Plot', xlab='Month', ylab='Mean')
+```
+Poichè la media della risposta cambia nei diversi mesi, possiamo affermare che c'è chiara stagionalità.
+
+### Controllo differenziazioni
+```{r}
+library(forecast)
+nsdiffs(logyt)
+```
+Vediamo che basta una sola differenziazione di ordine 12 per rendere la serie stazionaria nella sua componente stagionale. 
+
+### Differenziazione 
+```{r}
+diff12 <- diff(logyt, 12)
+plot(diff12)
+
+nsdiffs(diff12)
+```
+Ora la nostra serie è stazionaria per quanto riguarda la sua parte stagionale. 
+
+Adesso possiamo procedere lavorando sulla componente non stagionale.
+
+# COMPONENTE NON STAGIONALE 
+### ACF e PACF 
+```{r}
+acf2(diff12)
+```
+
+### ADF test
+```{r}
+library(urca)
+summary(ur.df(diff12, "trend", lags=12))
+```
+Osserviamo che value(-3.137) > tau3(-3.43) quindi non rifiutiamo H0: ro=0 e possiamo dire che la serie ha radici unitarie. 
+Inoltre, value(4.9474) < phi3(6.49) quindi non rifiutiamo H0: beta2=0 e possiamo dire che la serie non ha un trend.
+
+```{r}
+summary(ur.df(diff12, "drift", lags=12))
+
+mean(diff12)
+```
+Osserviamo che value(-2.7096) > tau2(-2.88) quindi non rifiutiamo H0: ro=0 e possiamo dire che la serie ha radici unitarie.
+Inoltre, value(3.7342) < phi1(4.63) quindi non rifiutiamo H0: beta1=0 e possiamo dire che la serie non ha un drift (infatti, mean=0.12 prossima a 0).
+
+```{r}
+summary(ur.df(diff12, "none", lags=12))
+```
+Osserviamo che value(-1.1099) > tau1(-1.95) quindi non rifiutiamo H0: ro=0 e possiamo dire che la serie ha radici unitarie. 
+
+### Controllo differenziazioni
+```{r}
+ndiffs(diff12)
+```
+Vediamo che è necessaria una differenziazione per rendere la nostra serie stazionaria.  
+
+### Differenziazione
+```{r}
+diff <- diff(diff12)
+
+ndiffs(diff)
+```
+
+### Grafici 
+```{r}
+plot(diff)
+acf2(diff,48)
+```
+Componente stagionale: ipotizziamo componenti AR(1) e MA(1).
+Componente non stagionale: ipotizziamo componenti AR(1) e MA(1).
+
+### Funzione auto.arima
+```{r}
+auto.arima(diff)
+```
+La funzione auto.arima applicata alla serie resa stazionaria ci suggerisce un modello ARIMA(0,0,1)(0,0,1)[12] con media zero.
+
+Proviamo a utilizzare la stessa funzione sul logaritmo della serie originale per vedere se vengono confermati i passaggi effettuati (differenziazione di ordine 12 prima e differenziazione di ordine 1 poi).
+
+```{r}
+auto.arima(logyt)
+```
+Ci viene suggerito un modello ARIMA(0,1,1)(0,1,1)[12].
+
+# MODELLO 
+### Scelta del modello 
+```{r}
+sarima(logyt, 1,1,1, 1,1,3, 12)
+sarima(logyt, 0,1,1, 1,1,2, 12)
+sarima(logyt, 0,1,1, 1,1,1, 12)
+sarima(logyt, 0,1,1, 0,1,1, 12)
+```
+Partendo dal modello ARIMA(1,1,1,1,1,3)[12], considerando la significatività dei parametri, otteniamo lo stesso modello suggeritoci dalla funzione auto.arima.
+I residui sembrano essere random, non autocorrelati (ACF=0 e p-value>0.05), distribuiti normalmente e l'AIC è pari a -483.4.
+
+### Fit
+```{r}
+mod <- Arima(logyt, order=c(0,1,1), seasonal=list(order=c(0,1,1), period=12))
+mod
+```
+Equazione modello. 
+
+### Analisi residui
+```{r}
+auto.arima(mod$residuals)
+```
+I residui del nostro modello sono white noise (infatti, da quanto visto prima, non risultavano problematici). 
+
+### Plot
+```{r}
+plot(logyt, col='blue', lwd=2)
+lines(fitted(mod), col='red', lwd=1.5)
+```
+Osserviamo che il modello fittato cattura molto bene l'andamento del logaritmo dello nostra serie originale. 
+
+### Forecast
+```{r}
+sarima.for(logyt, 24, 0, 1, 1, 0, 1, 1, 12)
+```
+Abbiamo fatto una previsione di due anni (24 mesi).
+
+# RIASSUNTO
+```{r}
+library(dplyr)
+cbind('yt'=yt, 'logyt'=logyt, 'diff12'=diff12, 'diff'=diff, 'fitted model'=fitted(mod), 'residual'=logyt-fitted(mod)) %>% autoplot(facets=TRUE, xlab='Year')
+```

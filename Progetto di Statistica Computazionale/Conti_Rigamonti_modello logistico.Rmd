@@ -1,0 +1,98 @@
+---
+title: "Conti_Rigamonti_modello logistico"
+output: word_document
+---
+
+# DATI 
+Consideriamo la costruzione del modello robusto e utilizziamo quanto ottenuto per lavorare su un modello logistico.
+
+# RISPOSTA BINARIA
+```{r}
+data_noinflu$logprice=log(data_noinflu$price)
+data_noinflu$logprice=ifelse(data_noinflu$logprice>log(15000),1,0)
+```
+Abbiamo reso la variabile risposta binaria in modo tale che venga attribuito valore 1 alle auto costose (price>15000) e valore 0 alle altre. 
+
+# MODELLO LOGISTO 1
+```{r}
+fit1 <- glm(logprice ~ symboling + og + fuel.type + 
+    aspiration + num.of.doors + body.style + drive.wheels + wheel.base + 
+    engine.type + num.of.cylinders + engine.size + compression.ratio + 
+    I(compression.ratio^2) + peak.rpm, data=data_noinflu, family='binomial')
+```
+Osserviamo che c'è qualche problema. 
+Poichè nella costruzione del modello robusto abbiamo già lavorato su collinearità e su zero variance, proviamo a controllare se c'è separazione/quasi-separazione. 
+
+# SEPARAZIONE/QUASI-SEPARAZIONE
+### Controllo significatività covariate
+```{r}
+drop1(fit1, test="LRT")
+```
+Osserviamo che le covariate symboling, og ed engine.size hanno p-value<0.00000000000000022, che num.of cylinders ha p-value pari a 0.000000000000001525 e che tutte le altre non sono significative.
+
+### Controllo separazione/quasi-separazione
+```{r}
+table(data_noinflu$logprice, data_noinflu$og)
+table(data_noinflu$logprice, data_noinflu$symboling)
+
+boxplot(data_noinflu$engine.size ~ data_noinflu$logprice)
+by(data_noinflu$engine.size, data_noinflu$logprice, summary)
+by(data_noinflu$engine.size, data_noinflu$logprice, breaks=25, hist)
+```
+Nelle tables relative a symboling e a og (fattori) sono presenti valori pari a 0 mentre, osservando le statistiche descrittive e gli istogrammi relativi a engine.size stratificati per logprice, possiamo dire che la maggior parte delle unità statistiche si trova tra il primo e il terzo quartile sia per logprice=1 che per logprice=0 e che il primo quartile della distribuzione di engine.size per logprice=1 è maggiore del terzo quartile per logprice=0.
+Possiamo allora affermare che symboling, og e engine.size sono causa del problema della quasi-separazione.
+
+Proviamo a eliminarle dal modello. 
+
+# MODELLO LOGISTICO 2 
+```{r}
+fit2 <- glm(logprice ~ fuel.type + 
+    aspiration + num.of.doors + body.style + drive.wheels + wheel.base + 
+    engine.type + num.of.cylinders + compression.ratio + 
+    I(compression.ratio^2) + peak.rpm, data=data_noinflu, family='binomial')
+
+drop1(fit2, test='LRT')
+
+table(data_noinflu$logprice, data_noinflu$num.of.cylinders)
+```
+Vediamo che ora è la covariata num.of.cylinders molto più signignificativa rispetto alle altre e che causa del problema della quasi-separazione.
+
+Proviamo allora a fittare il modello senza num.of.cylinders.             
+
+# MODELLO LOGISTICO 3
+```{r}
+fit3 <- glm(logprice ~ fuel.type + 
+    aspiration + num.of.doors + body.style + drive.wheels + wheel.base + 
+    engine.type + compression.ratio + 
+    I(compression.ratio^2) + peak.rpm, data=data_noinflu, family='binomial')
+summary(fit3)
+drop1(fit3, test='LRT')
+```
+Ora il problema della quasi-separazione è stato risolto. 
+
+### OR 
+```{r}
+or <- exp(cbind(OR=coef(fit3), confint(fit3)))
+round(or, digits=2)
+```
+Possiamo confrontare i p-value nel summary e gli intervalli di confindenza relativi agli OR: se l'intervallo di confidenza contiene l'1, la covariata non è significativamente diversa da 0.
+
+### Coefplot
+```{r}
+library(coefplot)
+coefplot(fit3, intercept=FALSE)
+```
+Osserviamo le caratterisitche delle automobili che hanno prezzo elevato. 
+
+# Previsioni
+```{r}
+data_noinflu$p <- predict(fit3, data_noinflu, type="response") 
+
+data_noinflu$ycapp <- ifelse(data_noinflu$p>0.5, 1, 0)
+
+table(observed=data_noinflu$logprice, predicted=data_noinflu$ycapp)/nrow(data_noinflu)
+
+accuracy <- 0.65945946 + 0.23243243
+accuracy 
+```
+Otteniamo un'accuracy elevata (pari quasi al 90%) ma dobbiamo ricordare che non si tratta di una misura robusta (misura ottimistica). 

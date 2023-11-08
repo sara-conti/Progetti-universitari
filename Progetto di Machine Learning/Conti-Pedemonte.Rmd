@@ -1,0 +1,1096 @@
+---
+title: "Progetto d'Esame"
+author: "Conti Sara - Pedemonte Marzia"
+output:
+  html_document:
+    toc: true
+    df_print: paged
+  word_document: default
+  pdf_document:
+    latex_engine: xelatex
+mainfont: Times New Roman
+sizefont: 12pt
+---
+
+Articoli a cui si è fatto riferimento:
+
+1. OZKAN I.A., KOKLU M. and SARACOGLU R. (2021). "Classification of Pistachio Species Using Improved K-NN Classifier" Progress in Nutrition, Vol. 23, N. 2. DOI:https://doi.org/10.23751/pn.v23i2.9686
+
+2. SINGH D, TASPINAR YS, KURSUN R, CINAR I, KOKLU M, OZKAN IA, LEE H-N., (2022). Classification and Analysis of Pistachio Species with Pre-Trained Deep Learning Models, Electronics,11 (7), 981. DOI: https://doi.org/10.3390/electronics11070981
+
+DATASET: https://www.muratkoklu.com/datasets/
+
+Download dell'articolo (PDF): https://www.mattioli1885journals.com/index.php/progressinnutrition/article/view/9686/9178"
+
+# DESCRIZIONE DEL PROBLEMA
+L'obiettivo di questa analisi è *classificare* correttamente due specie di pistacchio: *Kirmizi* e *Siirt*. L'interesse verso queste due specie è dovuto al fatto che hanno frutti più abbondanti e crescono durante tutte le stagioni. Sono quindi le specie predilette per la produzione in Turchia, uno dei principali produttori mondiali dell'alimento. I due tipi di pistacchio hanno anche un diverso valore economico e sono destinati a tipologie di mercato differenti: la specie *Kirmizi* è preferibilmente utilizzata in prodotti dolciari e della pasticceria, grazie al suo colore verde scuro, il sapore e l'aroma intenso; la specie *Siirt* si predilige invece come snack, grazie alla sua croccantezza e alla sua forma tondeggiante. 
+
+L'esigenza di elaborare metodi che consentano di classificare le due specie in modo efficace deriva dalla necessità di aumentare l'efficienza dei processi post-raccolta del prodotto. Un miglioramento nei sistemi tecnologici utilizzati per la lavorazione, produzione e commercializzazione delle diverse tipologie di pistacchio consentirebbe di aumentare la qualità del prodotto finale e, al contempo, di diminuirne il prezzo, favorendo così una maggiore accessibilità da parte del consumatore.
+
+# DESCRIZIONE E PREPARAZIONE DEL DATASET
+Le 28 variabili contenute nel dataset considerato (*data.xlsx*) sono ottenute attraverso un processo di estrazione (realizzato con il software *MATLAB*) di determinate caratteristiche, a partire da 2148 immagini. 
+
+## Importazione, controllo lettura e descrizione dei dati 
+Si importano i dati utilizzando la libreria `readxl`. 
+ 
+```{r}
+options(scipen=999)
+suppressPackageStartupMessages(library(readxl))
+data <- read_excel("data.xlsx")
+data <- as.data.frame(data) 
+```
+
+Si prosegue controllando la tipologia delle variabili importate. 
+ 
+```{r}
+str(data)
+```
+
+Si nota che le 28 variabili indipendenti sono state importate correttamente. Si tratta di variabili che riguardano aspetti morfologici (Area, Perimeter, Major_Axis, Minor_Axis, Eccentricity, Eqdiasq, Solidity, Convex_Area, Extent, Aspect_Ratio, Roundness, Compactenss), aspetti di forma (Shapefactor_1, Shapefactor_2, Shapefactor_3, Shapefactor_4) e caratteristiche dei colori delle immagini (Mean_RR, Mean_RG, Mean_RB, StdDev_RR, StdDev_RG, StdDev_RB, Kurtosis_RR, Kurtosis_RG, Kurtosis_RB). 
+
+```{r echo=FALSE}
+suppressPackageStartupMessages(library(magick))
+img <- image_read("/Users/saret/Documents/GitHub/Machine-Learning/ImmagineSpiegazioneVariabili.png")
+image_resize(img, "700x")
+```
+
+- *Area (A)*: area del pistacchio
+- *Perimeter (P)*: lunghezza del bordo del pistacchio
+- *Major_Axis (L)*: asse maggiore del pistacchio 
+- *Minor_Axis (l)*: asse minore del pistacchio
+- *Eccentricity (Ec)*: eccentricità dell'ellisse che definisce il pistacchio
+- *Eqdiasq (Ed = Equivalent Diameter)*: $sqrt{(4A/{ pi})}$
+- *Solidity (S)*: $S=A/C$
+- *Convex_Area (C)*: numero di pixel nel più piccolo poligono convesso che può contenere l'area di un pistacchio
+- *Extent (Ex)*: $A/A_B$ dove $A_B$ = Area del rettangolo di delimitazione
+- *Aspect_Ratio (K)*: $L/l$
+- *Roundness (R)*: $(4  pi A) / P^2$ 
+- *Compactenss (CO)*: $Ed/L$
+
+- *Shapefactor_1 (SF1)*: $L/A$
+- *Shapefactor_2 (SF2)*: $l/A$
+- *Shapefactor_3 (SF3)*: $A/(L/2*L/2* pi)$
+- *Shapefactor_4 (SF4)*: $A/(L/2*l/2* pi)$
+
+- *Mean_RR*: la media dei valori di intensità del colore rosso nei pixel dell'immagine
+- *Mean_RG*: la media dei valori di intensità del colore verde nei pixel dell'immagine
+- *Mean_RB*: la media dei valori di intensità del colore blu nei pixel dell'immagine
+- *StdDev_RR*: la deviazione standard dei valori di intensità del colore rosso nei pixel dell'immagine
+- *StdDev_RG*: la deviazione standard dei valori di intensità del colore verde nei pixel dell'immagine.
+- *StdDev_RB*: la deviazione standard dei valori di intensità del colore blu nei pixel dell'immagine.
+- *Kurtosis_RR*: la curtosi dei valori di intensità del colore rosso nei pixel dell'immagine
+- *Kurtosis_RG*: la curtosi dei valori di intensità del colore verde nei pixel dell'immagine
+- *Kurtosis_RB*: la curtosi dei valori di intensità del colore blu nei pixel dell'immagine
+
+Si decide invece di trasformare l'outcome (*Class*, classificato come *chr*) in *factor*:
+ 
+```{r}
+data$Class <- ifelse(data$Class == "Kirmizi_Pistachio", 1, 2)
+# 1 --> Kirmizi_Pistachio; 2 --> Siirt_Pistachio 
+```
+
+## Controllo dati mancanti
+Si utilizza la funzione `miss_var_summary` della libreria `naniar` per controllare la presenza di dati mancanti:
+ 
+```{r results='hide'}
+suppressPackageStartupMessages(library(naniar))
+miss_var_summary(data)
+```
+
+Non ci sono dati mancanti per nessuna variabile.
+
+## Distribuzione del target 
+Si realizza un barplot per osservare la distribuzione delle due tipologie di pistacchio all'interno del dataset:
+ 
+```{r}
+barplot(table(data$Class)/nrow(data), col=c("darkgreen", "lightgreen"),ylim = c(0,0.6), names.arg=c("Kirmizi Pistachio  n 0.5735568", "Siirt Pistachio  n 0.4264432"))
+```
+
+Delle 2148 osservazioni, 1232 corrispondono alla specie *Kirmizi* (57%), mentre i restanti 916 alla specie *Siirt* (43%). Si può quindi affermare che non si tratta di dati sbilanciati.
+
+## Statistiche descrittive
+Si procede con un'analisi descrittiva delle covariate (sottogruppo dei dati originali, a cui viene tolto l'outcome utilizzando la `funzione subset`) realizzando una tabella che riporta media, mediana, deviazione standard, minimo e massimo di ogni variabile. In particolare, ogni indice descrittivo è calcolato utilizzando la funzione `sapply`, che calcola l'indice d'interesse per ogni variabile contenuta nel dataset *covariate*. La tabella finale è ottenuta unendo tutte le statistiche sfruttando la funzione `data.frame`. L'unità di misura di ogni variabile è il *pixel*.
+ 
+```{r rows.print=28}
+covariate <- subset(data, select=-c(Class))
+stats_df <- data.frame(
+  Media = round(sapply(covariate, mean),3),
+  Mediana = round(sapply(covariate, median),3),
+  SD = round(sapply(covariate, sd),3),
+  Min = round(sapply(covariate, min),3),
+  Max = round(sapply(covariate, max),3)
+)
+
+print(stats_df)
+```
+
+## Collinearità
+Con la funzione `corrplot` della libreria `corrplot` si ottiene un grafico che riporta le correlazioni tra le covariate in studio. **type = "lower"** permette di raffigurare soltanto i valori al di sotto della diagonale principale (poichè la matrice è simmetrica).
+ 
+```{r fig.width=8, fig.height=8}
+suppressPackageStartupMessages(library(corrplot))
+corrplot(cor(covariate), method = "color", col = c("springgreen4", "springgreen3", "springgreen2", "springgreen1", "palegreen","tomato","red","red3", "red4"), type = "lower", addCoef.col = "black", number.cex=0.5, tl.cex=0.7, tl.col="violetred")
+```
+
+Data la natura delle variabili in analisi ci si aspettava la presenza di correlazioni molto elevate (in valore assoluto maggiori di circa 0.8), come evidenziato dai colori rosso scuro e verde scuro nel grafico.
+
+Per proseguire con l'analisi si decide di eliminare le variabili fortemente correlate. In particolare, questa operazione viene eseguita sfruttando la funzione `findCorrelation`, che, in modo iterativo, ad ogni step calcola il coefficiente di correlazione di Pearson tra tutte le coppie di variabili, eliminando una variabile altamente correlata con almeno una delle altre, finchè tutti i coefficienti sono inferiori alla soglia di 0.75. La funzione restituisce i nomi delle variabili (**names=TRUE**) da rimuovere dal dataset.
+ 
+```{r}
+suppressPackageStartupMessages(library(caret))
+C <- cor(covariate)
+correlatedPredictors <- findCorrelation(C, cutoff = 0.75, names = TRUE)
+```
+
+Si procede dunque considerando i sottogruppi (`subset`) dei dataset *covariate* e *data*, a cui vengono rimosse le variabili sopra restituite. 
+ 
+```{r}
+covariate <- subset(covariate, select=-c(Shapefactor_1, Eqdiasq, Area, Mean_RR, Mean_RG, Minor_Axis, Skew_RR, Skew_RG, Shapefactor_2, Solidity, Compactness, Aspect_Ratio, Eccentricity, Roundness, Kurtosis_RR, StdDev_RG))
+data <- subset(data, select=-c(Shapefactor_1, Eqdiasq, Area, Mean_RR, Mean_RG, Minor_Axis, Skew_RR, Skew_RG, Shapefactor_2, Solidity, Compactness, Aspect_Ratio, Eccentricity, Roundness, Kurtosis_RR, StdDev_RG))
+```
+
+Le covariate utilizzate successivamente sono quindi 12: 
+ 
+```{r echo=FALSE}
+names(covariate)
+```
+
+## Differenza tra le medie
+### Verifica assunti normalità
+Si procede con la verifica dell'assunto di normalità delle covariate d'interesse per stabilire se utilizzare il *t-test* o il *test di Wilcoxon* per valutare la differenza tra le medie.
+
+```{r echo=FALSE, rows.print=12}
+shapiro_results <- as.data.frame(subset(t(as.data.frame(sapply(covariate, shapiro.test))), select=-c(method, data.name)))
+shapiro_results$statistic <- round(as.numeric(shapiro_results$statistic),3)
+shapiro_results$p.value <- round(as.numeric(shapiro_results$p.value),3)
+shapiro_results
+```
+
+L'unica variabile normale è `Mean_RB`. Si utilizza quindi il test di Wilcoxon per confrontare le medie delle covariate rispetto alle due specie di pistacchio.
+
+### Wilcoxon 
+Sfruttando la funzione `table1` della libreria `table1` si costruisce una tabella che riporta le medie e le mediane suddivise nei due gruppi della variabile risposta con il p-value del test di Wilcoxon associato (calcolato nella funzione *rndr*). La realizzazione della tabella prevede l'aggiunta di un terzo livello alla variabile *Class* chiamato *P-value*.
+ 
+```{r}
+suppressPackageStartupMessages(library(table1))
+data$Class <- factor(data$Class, levels=c(1,2,3),
+                               labels=c("Kirmizi_Pistachio", # Reference
+                                        "Siirt_Pistachio", "P-value"))
+```
+ 
+```{r}
+# da codice di data visualization dal corso di Laboratio R
+rndr <- function(x, name, ...) {
+  if (length(x) == 0) {
+    y <- data[[name]]
+    s <- rep("", length(render.default(x=y, name=name, ...)))
+    if (is.numeric(y)) {
+      p <- wilcox.test(y ~ data$Class)$p.value
+    }
+    s[3] <- sub("<", "&lt;", format.pval(p, digits=3, eps=0.001))
+    s
+  } else {
+    render.default(x=x, name=name, ...)
+  }
+}
+
+rndr.strat <- function(label, n, ...) {
+  ifelse(n==0, label, render.strat.default(label, n, ...))
+}
+
+table1(~ Perimeter + Major_Axis + Convex_Area + Extent + Shapefactor_3 + Shapefactor_4| Class, 
+       data=data, overall=FALSE, render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid")
+```
+
+
+Dalla prima tabella si vede che i valori medi della specie *Siirt* sono più elevati di quelli della specie *Kirmizi*.
+ 
+```{r}
+table1(~ Mean_RB + StdDev_RR + StdDev_RB + Skew_RB + Kurtosis_RG + Kurtosis_RB| Class, 
+       data=data, overall=FALSE, render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid")
+```
+ 
+```{r}
+data$Class <- droplevels(data$Class, exclude = "P-value")
+```
+ 
+*Kurtosis_RB* è l'unica variabile in cui non si notano differenze significative fra i due tipi di pistacchio. Si può quindi affermare che le variabili selezionate permettono di classificare adeguatamente le due specie. 
+
+## Zero variance / near zero variance 
+Infine, si valuta la presenza o meno di *near zero variance* e varianza nulla nelle covariate considerate. Nello specifico, si parla di *near zero variance* quando una covariata ha varianza quasi nulla, ovvero quando i suoi valori sono molto simili fra di loro (o gli stessi in caso di varianza nulla). In questo caso la covariata in questione generalmente non contribuisce significativamente all'analisi e dunque è preferibile, se non necessario, eliminarla dal dataset. 
+
+La funzione `nearZeroVar` del pacchetto `caret` restituisce **TRUE** se la variabile presenta varianza nulla (*zeroVar*) o near zero variance (*nzv*), **FALSE** altrimenti.
+ 
+```{r rows.print=15}
+suppressPackageStartupMessages(library(caret))
+nzv <- nearZeroVar(data, saveMetrics = TRUE); nzv
+```
+
+Nelle covariate in analisi non si riscontra nessuna delle due problematiche sopra riportate. 
+
+# DIVISIONE DEL DATASET IN TRAIN E TEST
+Per procedere con l'analisi è necessario suddividere il dataset di partenza in due dataset differenti. Nello specifico, il dataset di training (*train*) è composto dal 70% dei dati originali e serve per addestrare diversi modelli competitivi, mentre il dataset di test (*test*) è composto dal restante 30% dei dati d'origine e viene utilizzato per valutare le prestazioni dei modelli e fare previsioni.
+
+Si procede dunque con il partizionamento del dataset di partenza ricorrendo alla funzione `createDataPartition`. 
+ 
+```{r}
+set.seed(123) # Per suddividere sempre nello stesso modo il dataset
+cpart <- createDataPartition(y=data$Class,times=1,p=.7)
+train <- data[cpart$Resample1,]
+test <- data[-cpart$Resample1,]
+
+table(train$Class)/nrow(train)
+table(test$Class)/nrow(test)
+```
+
+La funzione `table` permette di osservare che le frequenze relative nei due nuovi dataset sono molto simili fra di loro e a quelle del dataset di partenza. 
+
+# MODELLI 
+## Introduzione alla funzione utilizzata 
+Per addestrare i modelli è stato scelto di utilizzare la funzione `train` della libreria `caret` in quanto già nota da corsi precedenti e dunque di più facile utilizzo e gestione. Inoltre, il vantaggio di questa funzione rispetto a funzioni come *glm* e *knn* consiste nel fatto che già in fase di addestramento permette di utilizzare la *cross validation*, metodo di ricampionamento molto utile per evitare l'overfitting del modello ai dati di training. Consiste nel suddividere il dataset di training in *k* (in genere 5 o 10) porzioni: su *k-1* il modello viene addestrato, mentre la rimanente porzione viene utilizzata per testare il modello. Il processo viene quindi ripetuto iterativamente cambiando la porzione utlizzata per valutare il modello e il risultato finale è una media delle prestazioni ottenute nelle *k* iterazioni.
+
+La sintassi generale della funzione è la seguente:  
+**train(formula, data, method, trControl, ...)**, dove:
+
+- *formula*: specifica la variabile di risposta e le covariate
+- *data*: set di dati di training
+- *method*: nome del metodo di classificazione/regressione utilizzato 
+- *trControl*: oggetto che specifica la tecnica di ricampionamento da utilizzare (nel seguito in tutti i modelli si usa come metodo di campionamento la "*10-fold cross-validation*": `trainControl(method = "cv", number = 10)`)
+- ... ulteriori parametri saranno analizzati nel seguito quando verranno riscontrati nei modelli realizzati.
+
+La funzione `train` richiede la creazione di una nuova variabile risposta che assume valori **r0** ed **r1** a seconda che il pistacchio appartenga ad una o all'altra specie. 
+ 
+```{r}
+data$r <- ifelse(data$Class=="Kirmizi_Pistachio","r0","r1")  
+train$r <- ifelse(train$Class=="Kirmizi_Pistachio","r0","r1")
+test$r <- ifelse(test$Class=="Kirmizi_Pistachio","r0","r1")
+```
+
+Nell'analisi considerata si sceglie di massimizzare la ROC del modello come metrica d'interesse in modo da minimizzare sia i falsi positivi che i falsi negativi; infatti dato il contesto di classificazione non vi sono particolari motivi (ad esempio clinici) per prediligere la minimizzazione di uno dei due valori. Nello specifico, la ROC è la curva che sintetizza la relazione tra sensibilità (*VP/(VP+FN)*) e il complemento a uno della specificità (*VN/(VN+FP)*). In genere si calcola l'AUC (Area Under the Curve), che identifica l'area al di sotto della curva ROC. Più questo valore tende ad 1 e migliore è la ROC relativa. 
+
+Per validare i diversi modelli ottenuti si riportano i valori di AUC e le matrici di confusione con l'accuratezza associata, calcolati sul dataset di test. In particolare, l'accuratezza definisce la proporzione di previsioni corrette rispetto al numero totale di previsioni (*(VP+VN)/(FP+FN+VP+VN)*). 
+
+Nel seguito vengono fittati diversi modelli sul dataset di training. \
+In primo luogo si stimano i modelli che non richiedono model selection e successivamente 3 modelli in cui è preferibile applicarla (knn, pls e rete neurale). In particolare, si è scelto di considerare una prima model selection ottenuta dal modello *Lasso* ed una seconda ottenuta dal modello *Tree*.
+
+## 1. Ridge 
+Il RIDGE è un modello di regressione che fa parte dei così detti **metodi di regolarizzazione** (*shrinkage methods*), cioè di metodi di regressione **penalizzata**, utili nel caso in cui si dispone di molti predittori e/o vi è un'elevata collinearità tra di essi. Questi metodi (RIDGE, LASSO, ELASTIC NET) consentono di fittare un modello di regressione che include tutte le covariate e che, attraverso un termine di penalità, restringe (*shrink*) le stime dei coefficienti verso lo zero, riducendone anche la varianza. Questi metodi, come per la procedura dei minimi quadrati ordinari (OLS), stimano i coefficienti cercando quei valori che minimizzano la somma dei residui al quadrato (RSS) e, in aggiunta, anche il termine di penalità. Ciò che varia tra i modelli risiede nella definizione di quest'ultimo termine. 
+
+Nello specifico, nelle regressione RIDGE, il termine di penalità (*shrinkage penalty*), è pari alla somma di ogni coefficiente al quadrato (norma L2) moltiplicato per $\lambda$ (parametro di tuning), ed è piccolo per valori dei coefficienti prossimi allo zero: per questo ha l'effetto di restringere le stime *verso* lo zero. Il principale limite del RIDGE consiste nel fatto che, pur riducendo la complessità del modello, non riduce il numero di variabili: infatti, le stime dei coefficienti vengono ristrette verso lo zero, ma non vengono azzerate (come accade invece nel LASSO). Ciò si rivela utile quando tutte le variabili sono rilevanti per la predizione del modello e si vuole evitare l'overfitting.
+
+Di fondamentale importanza è la scelta del valore di $\lambda$, il cui valore ottimale viene spesso determinato attraverso cross-validation. Se $\lambda=0$ il termine di penalità si annulla, ritornando al caso OLS, mentre per $\lambda  \to  \infty$ l’impatto del termine di penalità cresce, e le stime sono sempre più vicine allo zero (la distorsione aumenta, rendendo il modello meno flessibile, e la varianza diminuisce). 
+
+Si fitta il modello RIDGE:
+ 
+```{r}
+set.seed(1) 
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(.alpha=0, .lambda=seq(0, 1, by = 0.01))
+ridge <- train(r~.-Class,
+            data=train, method="glmnet", metric="ROC",
+            trControl=ctrl, na.action=na.pass,
+            tuneGrid=grid, preProcess=c("scale","center"))
+```
+
+**set.seed(1)**: imposta un seme casuale per garantire la riproducibilità dei risultati: si ottengono sempre gli stessi risultati.  
+
+**trainControl**: specifica la tecnica di ricampionamento da utilizzare ("cv" e "n=10" per la ten-fold cross-validation), richiedendo in aggiunta di ottenere le probabilità previste di classe (*classProbs=TRUE*) e specificando la funzione di riepilogo da utilizzare (*twoClassSummary*) per calcolare le metriche specifiche per i problemi a due classi (AUC, sensibilità, specificità).
+
+**grid <- expand.grid(.alpha=0, .lambda=seq(0, 1, by = 0.01))**: specifica i valori del parametro di tuning (*lambda*) da considerare, in questo caso una sequenza di valori da 0 a 1 con incremento 0.01. Con alpha=0 si pone il valore del parametro dell'elastic net pari a 0, necessario per indicare che si tratta di una regressione RIDGE. Nel caso del LASSO, si pone invece alpha=1. Maggiori dettagli sul valore di alpha verranno forniti in seguito.
+
+**preProcess=c("scale","center")**: permette di specificare metodi di pre-processing da applicare ai predittori prima di fittare il modello. In questo caso *"center"* centra le variabili di input in modo che abbiano media 0, mentre **scale** divide per la deviazione standard. 
+
+**method="glmnet"**: specifica il metodo utilizzato, in questo caso tra i modelli di regressione penalizzata si sceglie, in base al valore attribuito ad alpha, il modello ridge
+
+**metric=ROC**: specifica la metrica da utilizzare per selezionare il modello ottimale.
+
+La funzione train quindi valuta qual è il valore del parametro lambda che permette di ottenere il modello migliore in termini di ROC, considerando diversi valori del parametro in base alla griglia specificata. Viene specificato in input (come primo argomento) che la variabile risposta è *r* e che le covariate sono tutte le altre presenti nel dataset, escluso *Class*.
+ 
+```{r}
+plot(ridge)
+ridge$bestTune
+```
+ 
+Sia dal grafico che dall'output **ridge$bestTune** si può notare che il lambda migliore è 0.03. 
+
+```{r}
+pred_ridge <- predict(ridge, newdata=test)
+cm_ridge <- confusionMatrix(pred_ridge, as.factor(test$r))
+cm_ridge
+```
+
+E' riportata la matrice di confusione per valutare le prestazioni del modello **ridge** sul dataset **test**. L'accuracy è pari a 0.9051.
+
+```{r}
+test$pred_ridge <- predict(ridge, test, "prob")[,2]
+suppressPackageStartupMessages(library(pROC))
+suppressMessages(roc(as.numeric(Class) ~ pred_ridge, data=test))
+```
+
+L'AUC è invece 0.9613. 
+
+## 2. Lasso
+Il LASSO (Least Absolute Shrinkage and Selection Operator) fa parte dei metodi di regressione penalizzata, in cui il termine di **penalità shrinkage** è definito come prodotto tra $\lambda$ e la somma dei valori assoluti dei coefficienti del modello (norma L1), che è piccolo quando i coefficienti sono prossimi allo zero. Questo termine di penalità ha l'effetto di restringere (*shrink*) le stime dei parametri verso lo zero e, a differenza del RIDGE, per come è definito, forza alcuni coefficienti ad essere nulli. Per questo motivo il LASSO permette di effettuare una selezione delle variabili.
+
+Si fitta il modello **Lasso**:
+
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(.alpha=1, .lambda=seq(0, 1, by = 0.01))
+lasso <- train(r~.-Class,
+            data=train, method="glmnet", metric="ROC",
+            trControl=ctrl, na.action=na.pass,
+            tuneGrid=grid, preProcess=c("scale","center"))
+```
+
+**grid <- expand.grid(.alpha=1, .lambda=seq(0, 1, by = 0.01))**: analogo al caso precedente, in questo caso si pone alpha=1. 
+
+**method="glmnet"**: specifica il metodo utilizzato, in questo caso tra i modelli di regressione penalizzata si sceglie, in base al valore attribuito ad alpha, il modello lasso
+
+
+```{r}
+plot(lasso)
+lasso$bestTune
+```
+
+Sia graficamente che dall'output *lasso$bestTune* si può osservare che il lambda migliore è pari a 0, dunque il modello Lasso coincide con il modello di regressione logistica (glm). 
+
+```{r}
+pred_lasso <- predict(lasso, newdata=test)
+cm_lasso <- confusionMatrix(pred_lasso, as.factor(test$r))
+cm_lasso
+```
+
+L'accuratezza è 0.9082.
+
+```{r}
+suppressPackageStartupMessages(library(pROC))
+test$pred_lasso <- predict(lasso, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_lasso, data=test))
+```
+
+L'AUC è uguale a 0.9622.
+
+### Identificazione delle variabili più importanti
+Poiché il lambda migliore è risultato essere 0 si implementa direttamente il modello logistico per la selezione delle variabili (i risultati sono gli stessi).
+ 
+```{r rows.print=13}
+library(glmnet)
+glm <- glm(Class~.-r,
+          data=train, family=binomial(link="logit"))
+drop1(glm, test="LRT")
+```
+
+Le 10 variabili selezionate dal modello sono: Shapefactor_3, Shapefactor_4, Extent, Skew_RB, Kurtosis_RG, Kurtosis_RB, StdDev_RR, StdDev_RB, Mean_RB, Major_Axis. 
+
+## 3. Elastic 
+Fa parte dei modelli di regressione penalizzata anche il modello Elastic Net, che è una combinazione dei modelli RIDGE e LASSO e permette di superare i punti critici di entrambi. Il principale svantaggio della regressione RIDGE è dovuto al fatto che mantiene tutte le variabili nel modello, rivelandosi poco adeguato nei casi in cui il numero di predittori è particolarmente elevato. Il LASSO invece, pur superando questo limite, nelle situazioni in cui il numero di predittori è maggiore del numero di osservazioni (n), seleziona al massimo solo *n* predittori non nulli (anche se tutte le covariate sono rilevanti). Inoltre, in presenza di due o più variabili altamente collineari, ne seleziona casualmente soltanto una (ignorando di quale variabile si tratti). L'Elastic Net si caratterizza per essere un modello di regressione che, come il LASSO, è sia un metodo di regolarizzazione che di selezione delle variabili, ma ne supera i limiti permettendo di selezionare anche gruppi di variabili correlate. Trattandosi di un modello di regolarizazione, l'obiettivo è sempre quello di minimizzare sia la somma dei quadrati dei residui, sia il termine di penalità (*shrinkage penalty*). Il termine di penalità è però definito come combinazione delle penalità della regressione RIDGE e LASSO per mezzo del parametro $0 \leq  \alpha \leq 1$, ossia $\alpha \lambda \sum_{j=1}^p |\beta_j|+ \frac{1-\alpha}{2} \sum_{j=1}^p \beta_j^2$. Quando $\alpha=0$ si ottiene il termine di penalità del RIDGE, mentre quando $\alpha=1$ si ottiene il termine di penalità del LASSO.
+
+Al parametro $\lambda$ si aggiunge un secondo parametro di tuning, $\alpha$; quindi è necessario ricercare i valori ottimali per entrambi i parametri. Come nei casi precedenti, l'ottimizzazione è fatta rispetto al valore di ROC.
+ 
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(.alpha=seq(0,1,by=0.01), .lambda=seq(0, 1, by = 0.01))
+elastic_all <- train(r~.-Class,
+            data=train, method="glmnet", metric="ROC",
+            trControl=ctrl, na.action=na.pass,
+            tuneGrid=grid, preProcess=c("scale","center"))
+```
+
+**grid <- expand.grid(.alpha=seq(0,1,by=0.01), .lambda=seq(0, 1, by = 0.01)**): rispetto ai casi precedenti, si definiscono nella griglia i valori da considerare per entrambi i parametri di tuning $\alpha$ e $\lambda$. Si specifica per entrambi i parametri una sequenza di valori da 0 a 1 con incremento 0.01 e si considera ogni possibile combinazione dei due.
+
+
+```{r}
+elastic_all$results[elastic_all$results$ROC==max(elastic_all$results$ROC),]
+```
+ 
+La combinazione migliore è alpha=0.3 e lambda=0. Si stima quindi il modello corrispondente. Si fa notare che con lambda nullo il termine di penalità viene azzerato e L'Elastic Net, come il Lasso, coincide con la regressione.
+ 
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(.alpha=0.3, .lambda=0)
+elastic <- train(r~.-Class,
+            data=train, method="glmnet", metric="ROC",
+            trControl=ctrl, tuneLength=10, na.action=na.pass,
+            tuneGrid=grid)
+```
+ 
+```{r}
+pred_elastic <- predict(elastic, newdata=test)
+cm_elastic <- confusionMatrix(pred_elastic, as.factor(test$r))
+cm_elastic 
+```
+ 
+L'accuracy è pari a 0.9082.
+ 
+```{r}
+test$pred_elastic <- predict(elastic, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_elastic, data=test))
+```
+ 
+Mentre l'AUC è 0.9621.
+
+## 4. Tree
+Un modello "decision tree" o albero decisionale è un algoritmo di apprendimento supervisionato non parametrico il cui obiettivo è quello di prevedere il valore di una variabile target attraverso l'apprendimento di regole decisionali ricavate dalle caratteristiche dei dati. Un albero decisionale è caratterizzato da una struttura gerarchica con un nodo radice (campione) che viene poi suddiviso in due o più insiemi omogenei. A loro volta i nodi subiscono un processo di divisione (splitting), basato su determinate regole, in due o più sotto-nodi. I nodi intermedi sono detti nodi decisionali o interni, le connessioni tra i nodi vengono dette rami e i nodi terminali sono chiamati foglie. 
+La costruzione di un albero decisionale, sia di regressione che di classificazione, si basa su un algoritmo iterativo top-down il cui obiettivo è quello di individuare, per ciascun nodo, la suddivisione migliore, cioè quella che massimizza l'omogeneità dei sotto-insiemi risultanti, iterando su tutte le possibili suddivisioni per ciascuna caratteristica di input e selezionando la suddivisione migliore, proseguendo finché i dati risultano completamente partizionati in sottoinsiemi omogenei. La suddivisione migliore viene individuata, a seconda che si tratti di un problema di regressione o classificazione, ricorrendo a criteri diversi, tipicamente i residui nella regressione e misure di "impurità" come l'indice di Gini, o l'entropia nella classificazione. 
+Se in alberi piccoli l'algoritmo è più semplice, in alberi grandi si cade nel rischio dell'overfitting. In questi casi si utilizza un metodo detto di potatura, che consiste nel rimuovere i rami che non contribuiscono significativamente alla precisione del modello o che si dividono in caratteristiche poco importanti.  
+Gli alberi decisionali presentano diversi limiti: non sono molto robusti (un piccolo cambiamento nei dati di training può comportare un grande cambiamento nella predizione) ed è elevato il rischio di overfitting. Per superare questi problemi e ottenere prestazioni migliori, si considerano metodi che aggregano molti alberi decisionali, come il modello "random forest" (o anche il bagging/boostring).
+ 
+```{r}
+set.seed(1)
+cvCtrl <- trainControl(method="cv", number=10, search="grid", classProbs = TRUE, summaryFunction=twoClassSummary, savePredictions=TRUE)
+tree <- train(r~.-Class, 
+              data=train, method="rpart", metric="ROC",
+                      tuneLength=10,
+                      trControl=cvCtrl, na.action=na.pass)
+```
+
+**tuneLength=10**: specifica di considerare per il parametro *cp* 10 diversi valori e selezionare quello ottimale in termini di massimizzazione della ROC. *cp* è riferito alla dimensione dell'albero, in particolare imposta un valore di soglia sul miglioramento nel fit richiesto per suddividere un nodo (valori più elevati di cp $\to$ alberi più grandi). Si possono considerare anche altre sequenze di parametri per ricercare il modello ottimale, ma in questa fase sono stati utilizzati i valori di default. Ad esempio *minsplit*, numero minimo di osservazioni che devono trovarsi in un nodo affinché si possa effettuare la suddivisione, che di default è pari a 20; *minbucket*, numero minimo di osservazioni presenti nei nodi foglia, di default pari al massimo tra 7 e il numero di osservazioni nel nodo radice/50; *maxdepth*, la profondità massima di ciascun nodo dell'albero, di default pari a 30.
+
+**method="rpart"**: specifica il metodo utilizzato, cioè in questo caso una albero decisionale. In particolare, la misura di impurità utilizza è l'indice di Gini (per default).
+
+```{r}
+plot(tree)
+tree$bestTune
+```
+ 
+Sia graficamente che dall'output *tree$bestTune* si può osservare che cp=0.004672897 massimizza la ROC. 
+ 
+```{r}
+pred_tree <- predict(tree, newdata=test)
+cm_tree <- confusionMatrix(pred_tree, as.factor(test$r))
+cm_tree
+```
+ 
+L'accuracy è 0.8787.
+ 
+```{r}
+test$pred_tree <- predict(tree, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_tree, data=test))
+```
+ 
+L'AUC è 0.9179.
+
+Si può rappresentare graficamente l'albero decisionale appena implementato:
+ 
+```{r}
+suppressPackageStartupMessages(library(rpart.plot))
+rpart.plot(tree$finalModel, extra=106)
+```
+ 
+In particolare, all'interno di ogni nodo finale è indicata la classificazione degli elementi in "r0" o "r1", la probabilità di classificazione associata (se minore di 0.5 si classifica "r0", altrimenti "r1") e la percentuale di elementi presenti. Si può osservare che la maggior parte delle unità sperimentali sono ben classificate in quanto le probabilità di classificazione sono lontane da 0.50, tranne in due situazioni che comprendono però solo il 3% dei casi.
+
+
+### Importanza variabili albero 
+
+Con la funzione `varImp` della libreria `caret` si valuta l'importanza delle variabili presenti nel modello, espressa in percentuale rispetto alla variabile risultata essere la più importante. 
+ 
+```{r}
+library(caret)
+varImpTree <- caret::varImp(tree); varImpTree 
+plot(varImpTree , main="train tuned-Variable Importance")
+mean(varImpTree$importance$Overall)
+```
+
+Si nota che la variabile più importante è Shapefactor_3. Vari sono i criteri per selezionare le variabili a partire dalla tabella precedente. Uno consiste nel considerare quelle che hanno un'importanza relativa superiore alla media dei valori. In questo caso la media è 26.4. In questa situazione, in cui le variabili di partenza sono solo 12, utilizzando questo criterio se ne considererebbero solo 3; si è perciò scelto di abbassare la soglia al 20%. Le variabili selezionate risultano dunque essere: Shapefactor_3, Convex_Area, Shapefactor_4, StdDev_RR, StdDev_RB. 
+
+
+### Model selection tree e nuovi dataset di training e di test
+Si creano nuovi dataset di train e di test con le variabili importanti secondo il modello *tree*.
+ 
+```{r}
+train_tree <- train[,c("Shapefactor_3", "Convex_Area", "Shapefactor_4", "StdDev_RR", "StdDev_RB")]
+train_tree=cbind(train$r, train_tree)
+names(train_tree)[1] <- "r"
+
+test_tree=test[,c("Shapefactor_3", "Convex_Area", "Shapefactor_4", "StdDev_RR", "StdDev_RB")]
+test_tree=cbind(test$r, test_tree)
+names(test_tree)[1] <- "r"
+```
+
+
+## 5. Random forest
+Come già precedentemente accennato, si tratta di un algoritmo che combina i risultati provenienti da alberi decisionali addestrati in modo indipendente su diversi sotto-campioni dei dati di partenza (campioni bootstrap, con reinserimento). Questo algoritmo è un miglioramento del *bagging* in quanto consente di ottenere alberi non correlati. Infatti, nel bagging, per la suddivisione in ciascun nodo sono prese in considerazione tutte le variabili. Nella Random Forest, invece, in ciascun nodo ne viene considerato solo un sottoinsieme casuale, creando quindi una maggiore diversità tra gli alberi risultanti. Nei problemi di classificazione, l'output della Random Forest consiste nella classe selezionata dalla maggior parte degli alberi.
+
+
+### *ntree* migliore
+Per selezionare il numero migliore di alberi da considerare si implementa un ciclo *for*, facendo variare il parametro *ntree* da 200 a 500 (valore di default).
+ 
+```{r rows.print=50}
+set.seed(1)
+control <- trainControl(method="cv", number=10, search="grid", summaryFunction=twoClassSummary, classProbs = TRUE)
+tunegrid <- expand.grid(.mtry=c(1:6)) 
+modellist <- list()
+for (ntree in seq(200,500, by=50)){
+  set.seed(123)
+  rf <- train(r~.-Class,
+               data = train,
+               method = 'rf',
+               metric = 'ROC',
+               tuneGrid = tunegrid,
+               trControl = control,
+               ntree = ntree)
+  key <- toString(ntree)
+  modellist[[key]] <- rf
+}
+
+results <- resamples(modellist)
+s <- summary(results)
+
+dotplot(results)
+```
+
+Pur essendo fortemente simili i risultati, si sceglie il valore che il software restituisce come migliore, ovvero **ntree=300**. 
+ 
+```{r}
+set.seed(1)
+control <- trainControl(method="cv", number=10, search="grid", summaryFunction=twoClassSummary, classProbs = TRUE)
+tunegrid <- expand.grid(.mtry=c(1:6)) 
+rf <- train(r~.-Class, 
+            data=train, method="rf", metric="ROC", 
+            tuneGrid=tunegrid, ntree=300, trControl=control, na.action=na.pass)
+```
+
+**tunegrid <- expand.grid(.mtry=c(1:6))**: specifica plausibili valori da considerare per il parametro su cui fare tuning: mtry. *mtry* indica il numero di variabili selezionate casualmente da ogni nodo dell'albero durante la costruzione del modello. Viene scelto il valore ottimale in termini di massimizzazione della ROC. Si potrebbe valutare anche il parametro *max.depth*, cioè la profondità massima di ciascun nodo dell'albero, mentre *ntree* è già stato stabilito in precedenza ed è stato fissato a 300.
+
+**method="rf"**: specifica il metodo utilizzato, ovvero Random Forest.
+ 
+```{r}
+plot(rf)
+rf$bestTune
+```
+ 
+Sia graficamente che dall'output *rf$bestTune* si può osservare che il numero di variabili selezionate da ogni nodo dell’albero è uguale a 2.
+ 
+```{r}
+pred_rf <- predict(rf, newdata=test)
+cm_rf <- confusionMatrix(pred_rf, as.factor(test$r))
+cm_rf
+```
+ 
+L'accuracy è 0.916. 
+ 
+```{r}
+test$pred_rf <- predict(rf, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_rf, data=test))
+```
+ 
+L'AUC è 0.9615.
+
+## Modelli che prevedono la selezione delle variabili 
+
+Si considerano ora le due diverse selezioni delle variabili ottenute con il Lasso e il Decision Tree e con queste si implementano diversi modelli.
+
+Le 10 variabili selezionate dal Lasso sono: Shapefactor_3, Shapefactor_4, Extent, Skew_RB, Kurtosis_RG, Kurtosis_RB, StdDev_RR, StdDev_RB, Mean_RB, Major_Axis. 
+
+Le 5 variabili selezionate dal Decisione Tree sono: Shapefactor_3, Convex_Area, Shapefactor_4, StdDev_RR, StdDev_RB.
+
+Si osservi che le variabili Shapefactor_3, Shapefactor_4, StdDev_RR e StdDev_RB sono presenti in entrambi i modelli.
+
+Rispetto alle variabili legate alle caratteristiche dei colori delle immagini, si noti che due standard deviation (RB e RR) sono comprese nelle due selezioni, mentre curtosi, skewness e media di RB sono presenti solo nella prima selezione. Rispetto alle variabili che riguardano aspetti morfologici si noti che Extent e Major_Axis sono  presenti solo nella prima selezione, mentre Convex_Area è presente solo nella seconda. 
+
+
+## 6. KNN
+Il modello KNN (K-Nearest Neighbors) è un algoritmo di apprendimento supervisionato non parametrico utilizzato sia in problemi di regressione che di classificazione. Nel secondo caso, un'osservazione è classificata in base ai suoi "vicini più vicini". Più nello specifico, per ciascuna osservazione vengono considerate le *k* unità più vicine e l'unità è assegnata alla classe più frequente fra le classi di queste *k* unità. Poiché quest'algoritmo si basa sulla distanza, è opportuno rendere le variabili a varianza unitaria. Uno degli svantaggi di questo algoritmo è dato dall'alto costo computazionale perché devono essere calcolate le distanze tra tutti i punti del dataset. La scelta del valore di *k* richiede particolare attenzione. In particolare, un valore di *k* troppo basso può portare ad un modello troppo sensibile alla presenza di outlier e in generale ad un overfitting.
+
+Il metodo viene implementato considerando prima le variabili selezionate con il modello Lasso e poi con quelle selezionate con il modello Tree.
+
+### 6.1 KNN1 - MS Lasso
+
+Nella funzione `train` si specifica che la variabile di risposta è *r*, mentre le variabili predittive sono *Major_Axis, Extent, Shapefactor_3, Shapefactor_4, Mean_RB, StdDev_RR, StdDev_RB, Skew_RB, Kurtosis_RG, Kurtosis_RB*. 
+
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(k=seq(5,30))
+knn1 <- train(r~ Major_Axis+Extent+Shapefactor_3+Shapefactor_4+Mean_RB+StdDev_RR+StdDev_RB+Skew_RB+Kurtosis_RG+Kurtosis_RB,
+          data=train, method="knn", metric="ROC",
+          trControl=ctrl, na.action=na.pass,
+          tuneGrid=grid, preProcess=c("scale", "corr", "nzv"))
+```
+ 
+**grid <- expand.grid(k=seq(5,30))**: crea una sequenza di valori per il parametro *k* che va da 5 a 30.
+
+**preProcess=c("scale", "corr", "nzv")**: permette di specificare metodi di pre-processing da applicare ai predittori prima di fittare il modello, in particolare viene eseguita la standardizzazione delle variabili (*scale*), la rimozione delle variabili altamente correlate (*corr*) e delle variabili con varianza nulla o quasi (*nzv*).
+
+**method="knn"**: specifica che viene utilizzato il metodo KNN. La distanza di default è quella Euclidea. 
+
+```{r}
+plot(knn1)
+knn1$bestTune
+```
+
+Dal grafico si osserva che al crescere di *k* la ROC cresce, ma a partire da k=25 i valori iniziano a diminuire. Il *k* migliore è dunque proprio k=25.
+
+Si implementa il modello con k=25.
+
+```{r}
+grid <- expand.grid(k=25)
+knn1 <- train(r~ Major_Axis+Extent+Shapefactor_3+Shapefactor_4+Mean_RB+StdDev_RR+StdDev_RB+Skew_RB+Kurtosis_RG+Kurtosis_RB,
+          data=train, method="knn", metric="ROC",
+          trControl=ctrl, na.action=na.pass,
+          tuneGrid=grid, preProcess=c("scale", "corr", "nzv"))
+```
+
+
+```{r}
+pred_knn1 <- predict(knn1, newdata=test)
+cm_knn1 <- confusionMatrix(pred_knn1, as.factor(test$r))
+cm_knn1
+```
+
+L'accuracy è uguale a 0.8616.
+
+```{r}
+test$pred_knn1 <- predict(knn1, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_knn1, data=test))
+```
+
+L'AUC è 0.9486.
+
+### 6.2 KNN2 - MS Tree
+
+Si considerano le variabili selezionate dal modello *tree*, utilizzando il dataset creato in precedenza *train_tree*.
+ 
+```{r}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+grid <- expand.grid(k=seq(5,30))
+knn2 <- train(r~.,
+          data=train_tree, method="knn", metric="ROC",
+          trControl=ctrl, na.action=na.pass,
+          tuneGrid=grid, preProcess=c("scale", "corr", "nzv"))
+```
+ 
+```{r}
+plot(knn2)
+knn2$bestTune
+```
+ 
+In questo caso il k che massimizza la ROC è uguale a 21.
+ 
+```{r}
+pred_knn2 <- predict(knn2, newdata=test_tree)
+cm_knn2 <- confusionMatrix(pred_knn2, as.factor(test_tree$r))
+cm_knn2
+```
+ 
+L'accuracy è 0.8802.
+ 
+```{r}
+test_tree$pred_knn2 <- predict(knn2, test_tree, "prob")[,2]
+test_tree$Class <- test$Class
+suppressMessages(roc(as.numeric(Class) ~ pred_knn2, data=test_tree))
+```
+ 
+L'AUC è 0.9492.
+
+
+## 7. PLS
+Il modello PLS (Partial Least Squares) è una versione supervisionata della PCA (Principal Component Analysis). E' una tecnica inizialmente progettata per la regressione che sfrutta un approccio di riduzione della dimensionalità individuando componenti ortogonali (combinazioni lineari delle covariate) che spieghino quanta più varianza possibile della risposta. Può essere utilizzata anche per la classificazione. E' sensibile alla scelta del numero di componenti PLS da includere nel modello. 
+
+### 7.1 PLS1 - MS Lasso
+Si considerano le variabili selezionate con il modello Lasso e si fitta il modello PLS.
+
+```{r}
+suppressPackageStartupMessages(library(pls))
+
+set.seed(1234)
+Control <- trainControl(method="cv",number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+pls1 <- train(r~Major_Axis+Extent+Shapefactor_3+Shapefactor_4+Mean_RB+StdDev_RR+
+                StdDev_RB+Skew_RB+Kurtosis_RG+Kurtosis_RB, 
+          data=train, method="pls", metric="ROC", 
+          trControl=Control, tuneLength=10, preProcess="scale")
+```
+
+**tuneLength=10**: specifica di considerare per il parametro di tuning (numero delle componenti) 10 diversi valori e selezionare quello ottimale in termini di massimizzazione della ROC.  
+
+**method="pls"**: specifica che viene utilizzato il metodo PLS. 
+
+```{r}
+plot(pls1)
+pls1$bestTune
+```
+ 
+Il numero di componenti che massimizza la ROC è 5.
+ 
+```{r}
+pred_pls1 <- predict(pls1, newdata=test)
+cm_pls1 <- confusionMatrix(pred_pls1, as.factor(test$r))
+cm_pls1
+```
+ 
+L'accuracy è 0.9067.
+ 
+```{r}
+test$pred_pls1 <- predict(pls1, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_pls1, data=test))
+```
+ 
+L'AUC è 0.9589.
+
+### 7.2 PLS2 - MS Tree
+Si considerano le variabili importanti selezionate dal modello *tree*, utilizzando il dataset creato in precedenza *train_tree*.
+ 
+```{r}
+suppressPackageStartupMessages(library(pls))
+
+set.seed(1234)
+Control <- trainControl(method="cv",number=10, classProbs = TRUE, summaryFunction=twoClassSummary)
+pls2 <- train(r~., 
+          data=train_tree, method="pls", metric="ROC",
+          trControl=Control, tuneLength=5)
+```
+
+```{r}
+plot(pls2)
+pls2$bestTune
+```
+ 
+Il numero di componenti che massimizza la ROC è pari a 4.
+ 
+```{r}
+pred_pls2 <- predict(pls2, newdata=test_tree)
+cm_pls2 <- confusionMatrix(pred_pls2, as.factor(test_tree$r))
+cm_pls2
+```
+ 
+L'accuracy è 0.8802. 
+ 
+```{r}
+test_tree$pred_pls2 <- predict(pls2, test_tree, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_pls2, data=test_tree))
+```
+ 
+L'AUC è 0.9458.
+
+## 8. Rete neurale - MS 
+Le reti neurali (ANN, artifical neural network) sono utilizzate sia nei problemi di regressione che di classificazione e si ispirano direttamente al funzionamento dei neuroni. Una rete neurale è costituita da diversi strati di unità tra loro interconnesse, i *nodi* (o *neuroni artificali*), che sono in grado di elaborare informazioni e trasmetterle ai nodi dello strato successivo. Gli strati che compongono la rete sono almeno tre: uno *strato di input* (le covariate), uno *strato nascosto*, ed uno *strato di output*. Gli output dei nodi di uno strato vengono pesati e combinati in una funzione lineare, e diventano gli input dello strato successivo. Successivamente, mediante una *funzione di attivazione* (non lineare), si stabilisce se il risultato diventa effettivamente l'output trasmesso dal nodo e quindi l'input dello strato successivo della rete. La funzione di attivazione permette di ridurre l’effetto di valori estremi di input; quindi rende la rete più robusta alla presenza di outlier e aggiunge una componente non lineare alla rete (che sarebbe altrimenti una semplice funzione lineare). Le funzioni di attivazione più note sono la sigmoide, la ReLU e la tangente iperbolica.
+
+L'addestramento della rete neurale consiste nella determinazione dei pesi ottimali sulla base del dataset di train. I pesi vengono inizializzati (anche in modo casuale); successivamente si ricercano i valori ottimali che minimizzano una funzione di costo, misura della differenza tra valore osservato e predetto (come ad esempio il gradient descent). I pesi vengono riaggiustati iterativamente sfruttando algoritmi come la backpropagation. Il processo di aggiornamento dei parametri prosegue fino al raggiungimento di un criterio di stop.
+
+### 8.1 Rete neurale 1 - MS Lasso
+Si utilizza la funzione train per costruire il modello di Rete Neurale, utilizzando la variabili selezionate con il Lasso.
+ 
+```{r results='hide'}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, summaryFunction=twoClassSummary, classProbs=T)
+grid <- expand.grid(.size = c(5, 10, 15), .decay = c(0.1, 0.01, 0.001))
+rete1 <- train(r~Major_Axis+Extent+Shapefactor_3+Shapefactor_4+Mean_RB+StdDev_RR+StdDev_RB+Skew_RB+Kurtosis_RG+Kurtosis_RB, data=train,
+                     method="nnet",
+                     preProcess=c("range","corr","nzv"), 
+                     metric="ROC", trControl=ctrl,
+                     trace=TRUE,
+                     tuneGrid=grid,
+                     na.action=na.pass)
+```
+ 
+
+**grid <- expand.grid(.size = c(5, 10, 15), .decay = c(0.1, 0.01, 0.001))**: specifica plausibili valori da considerare per i parametri su cui fare tuning: size e decay. *size* indica il numero di neuroni nello strato nascosto della rete e *decay* è il parametro che controlla la regolarizzazione applicata durante l'addestramento del modello. Permette di tutelarsi dall'overfitting aggiungendo un termine di penalità alla funzione di costo che incentiva la scelta di pesi più piccoli. In particolare, viene scelta la combinazione di valori ottimale per i due parametri in termini di massimizzazione della ROC. 
+
+**method="nnet"**: specifica il metodo utilizzato, cioè in questo caso una rete neurale. In particolare, questa funzione utilizza come funzione di attivazione la tangente iperbolica e la log verosimiglianza negativa come funzione di costo. I pesi vengono aggiornati sfruttando la backpropagation.
+ 
+```{r}
+plot(rete1)
+rete1$bestTune
+```
+ 
+I parametri che massimizzano la ROC sono size=15 e decay=0.01. 
+ 
+```{r}
+pred_rete1 <- predict(rete1, newdata=test)
+cm_rete1 <- confusionMatrix(pred_rete1, as.factor(test$r))
+cm_rete1
+```
+ 
+L'accuracy è 0.9114.
+ 
+```{r}
+test$pred_rete1 <- predict(rete1, test, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_rete1, data=test))
+```
+L'AUC è 0.97.
+
+Si può inoltre vedere la rappresentazione grafica della rete:
+
+```{r fig.width=10, fig.height=6}
+suppressPackageStartupMessages(library(NeuralNetTools))
+suppressPackageStartupMessages(library(nnet))
+suppressPackageStartupMessages(library(glmnet))
+
+plotnet(rete1, alpha=0.6, cex=0.7)
+```
+
+### 8.2 Rete neurale 2 - MS Tree
+Si considerano le variabili selezionate dal modello *tree*, utilizzando il dataset creato in precedenza *train_tree*.
+ 
+```{r results='hide'}
+set.seed(1)
+ctrl <- trainControl(method="cv", number=10, summaryFunction=twoClassSummary, classProbs=T)
+grid <- expand.grid(.size = c(5, 10, 15), .decay = c(0.1, 0.01, 0.001))
+rete2 <- train(r~., data=train_tree,
+                     method="nnet",
+                     preProcess=c("range","corr","nzv"), 
+                     metric="ROC", trControl=ctrl,
+                     trace=TRUE,
+                     tuneGrid=grid,
+                     na.action=na.pass)
+```
+ 
+```{r}
+plot(rete2)
+rete2$bestTune
+```
+ 
+In questo caso size=5 e decay=0.01 massimizzano la ROC.
+ 
+```{r}
+pred_rete2 <- predict(rete2, newdata=test_tree)
+cm_rete2 <- confusionMatrix(pred_rete2, as.factor(test_tree$r))
+cm_rete2
+```
+ 
+L'accuracy è 0.8849.
+ 
+```{r}
+test_tree$pred_rete2 <- predict(rete2, test_tree, "prob")[,2]
+suppressMessages(roc(as.numeric(Class) ~ pred_rete2, data=test_tree))
+```
+L'AUC è 0.9577.
+
+Si può inoltre vedere la rappresentazione grafica della rete:
+
+```{r fig.width=10, fig.height=6}
+suppressPackageStartupMessages(library(NeuralNetTools))
+suppressPackageStartupMessages(library(nnet))
+suppressPackageStartupMessages(library(glmnet))
+
+plotnet(rete2, alpha=0.6, cex=0.7)
+```
+
+# COMPARAZIONE RISULTATI CROSS VALIDATI
+Si procede con il confronto dei risultati, rispetto alla metrica d'interesse (ROC):
+ 
+```{r}
+results <- resamples(list(ridge=ridge, lasso=lasso, elastic=elastic, rf=rf, knn1=knn1, pls1=pls1, rete1=rete1, tree=tree, knn2=knn2, pls2=pls2, rete2=rete2))
+#summary(results, metric="ROC")
+bwplot(results)
+```
+ 
+Si nota come molti modelli siano simili tra di loro e in grado di massimizzare molto bene la ROC. In particolare, il modello migliore risulta essere la *rete1*, seguita dal modello *random forest*, dall'*elastic* e dal *lasso*, che sono molto simili. Invece non risultano ben performanti i due modelli *pls2* e *tree*. 
+
+Si procede con le raffigurazioni e le stime delle ROC.
+
+## Curve ROC e Accuracy
+Per procedere alla rappresentazione grafica delle curve ROC inizialmente si salvano le probabilità di previsione dei modelli all'interno del dataset di test (es: `test$p_lasso <- predict(lasso, test, "prob")[,2]`), in seguito si salvano i valori delle stime delle ROC (es. `r_lasso <- suppressMessages(roc(r~p_lasso, data=test)`). 
+ 
+```{r echo=FALSE, results='hide'}
+test$p_lasso <- predict(lasso, test, "prob")[,2]
+test$p_ridge <- predict(ridge, test, "prob")[,2]
+test$p_elastic <- predict(elastic, test, "prob")[,2]
+test$p_rf <- predict(rf, test, "prob")[,2]
+test$p_knn1 <- predict(knn1, test, "prob")[,2]
+test$p_pls1 <- predict(pls1, test, "prob")[,2]
+test$p_rete1 <- predict(rete1, test, "prob")[,2]
+test$p_tree <- predict(tree, test, "prob")[,2]
+test$p_knn2 <- predict(knn2, test, "prob")[,2]
+test$p_pls2 <- predict(pls2, test, "prob")[,2]
+test$p_rete2 <- predict(rete2, test, "prob")[,2]
+
+r_lasso <- suppressMessages(roc(r~p_lasso, data=test))
+r_ridge <- suppressMessages(roc(r~p_ridge, data=test))
+r_elastic <- suppressMessages(roc(r~p_elastic, data=test))
+r_rf <- suppressMessages(roc(r~p_rf, data=test))
+r_knn1 <- suppressMessages(roc(r~p_knn1, data=test))
+r_pls1 <- suppressMessages(roc(r~p_pls1, data=test))
+r_rete1 <- suppressMessages(roc(r~p_rete1, data=test))
+r_tree <- suppressMessages(roc(r~p_tree, data=test))
+r_knn2 <- suppressMessages(roc(r~p_knn2, data=test))
+r_pls2 <- suppressMessages(roc(r~p_pls2, data=test))
+r_rete2 <- suppressMessages(roc(r~p_rete2, data=test))
+```
+ 
+Successivamente si definisce una lista di colori distinti e si rappresentano graficamente le curve (es: `plot(r_lasso, col=colori[1]); lines(r_ridge, col=colori[2])`).
+ 
+```{r echo=FALSE}
+colori <- c("black", "red", "blue", "orange", "violet", "green", "pink", "yellow", "lightblue","violetred", "dodgerblue1")
+
+plot(r_lasso, col=colori[1])
+lines(r_ridge, col=colori[2])
+lines(r_elastic, col=colori[3])
+lines(r_rf, col=colori[4])
+lines(r_knn1, col=colori[5])
+lines(r_pls1, col=colori[6])
+lines(r_rete1, col=colori[7])
+lines(r_tree, col=colori[8])
+lines(r_knn2, col=colori[9])
+lines(r_pls2, col=colori[10])
+lines(r_rete2, col=colori[11])
+
+legend("bottomright", 
+       legend=c("lasso", "ridge", "elastic", "rf", "knn1", "pls1", 
+                "rete1", "tree", "knn2", "pls2", "rete2"), 
+       col=colori, lty=1, cex=0.6)
+```
+ 
+Si osserva che la maggior parte delle curve ROC si sovrappone, quindi per individuare i modelli migliori si riportano i valori delle ROC e delle accuratezze nei diversi modelli.
+ 
+```{r rows.print=16}
+roc <- as.data.frame(
+  rbind(c("LASSO",r_lasso$auc, cm_lasso$overall[1]), c("RIDGE",r_ridge$auc, cm_ridge$overall[1]), c("ELASTIC",r_elastic$auc, cm_elastic$overall[1]), c("RF",r_rf$auc, cm_rf$overall[1]), c("KNN1",r_knn1$auc, cm_knn1$overall[1]), c("PLS1",r_pls1$auc, cm_pls1$overall[1]), c("RETE1",r_rete1$auc, cm_rete1$overall[1]), c("TREE",r_tree$auc, cm_tree$overall[1]), c("KNN2", r_knn2$auc, cm_knn2$overall[1]), c("PLS2",r_pls2$auc, cm_pls2$overall[1]), c("RETE2",r_rete2$auc, cm_rete2$overall[1])
+  )
+)
+
+colnames(roc) <- c("Modello", "ROC", "Accuracy")
+roc$ROC <- round(as.numeric(roc$ROC),4)
+roc$Accuracy <- round(as.numeric(roc$Accuracy),4)
+row.names(roc) <- NULL
+roc <- roc[rev(order(roc$Accuracy, roc$ROC)),]; roc
+```
+ 
+La rete1, il modello random forest e il Lasso sono i migliori modelli stimati per ROC e accuracy.
+
+Si confrontano ora i valori di ROC e accuratezza per i soli modelli che prevedono selezione delle variabili. 
+
+```{r}
+roc2 <- roc[roc$Modello!="RF"&roc$Modello!="LASSO"&roc$Modello!="ELASTIC"&roc$Modello!="RIDGE"&roc$Modello!="TREE",]
+roc2 <- roc2[order(roc2$Modello),]; roc2
+```
+
+In particolare, si può notare che le prestazioni dei modelli in cui è stata utilizzata la selezione delle variabili effettuata dal Lasso tendono ad essere migliori di quelle dei modelli in cui la selezione delle variabili è basata sul Decision Tree. Si può ipotizzare che ciò sia dovuto al fatto che il numero delle variabili selezionate con quest'ultimo modello sia inferiore rispetto al numero di quelle risultanti dal modello Lasso. 
+
+Si fa notare che, nonostante le minori variabili in input, i modelli costruiti a partire dalla selezione del Decision Tree, hanno comunque buone prestazioni, di poco inferiori a quelle dei modelli ottenuti con la selezione del modello Lasso.  
+
+# PREVISIONI
+Si procede stimando le previsioni sul dataset di test utilizzando i 3 modelli migliori.
+ 
+## Rete1 - nnet
+ 
+```{r}
+set.seed(1)
+previsione_rete1 <- predict(rete1, test, "prob") #probabilità
+previsione_rete1$R <- predict(rete1, test) #r0 o r1
+head(previsione_rete1)
+```
+ 
+Con il codice seguente si confrontano i valori di previsione della rete con il vero valore della variabile *r* del dataset di test. In particolare si crea una nuova variabile chiamata **prev_rete101** che assume valore 1 se i due valori sono uguali e 0 altrimenti. Si procederà nello stesso modo con gli altri due modelli. 
+ 
+```{r}
+previsione_rete1$test <- test$r
+for(i in 1:length(previsione_rete1$r0)){
+  if(previsione_rete1$R[i]==previsione_rete1$test[i]){previsione_rete1$prev_rete101[i]=1}
+  else{previsione_rete1$prev_rete101[i]=0}
+}
+```
+ 
+
+## Rf
+ 
+```{r}
+set.seed(1)
+previsione_rf <- predict(rf, test, "prob")
+previsione_rf$R <- predict(rf, test)
+head(previsione_rf)
+```
+ 
+```{r, echo=FALSE}
+previsione_rf$test <- test$r
+for(i in 1:length(previsione_rf$r0)){
+  if(previsione_rf$R[i]==previsione_rf$test[i]){previsione_rf$prev_rf01[i]=1}
+  else{previsione_rf$prev_rf01[i]=0}
+}
+```
+ 
+## Lasso
+ 
+```{r}
+set.seed(1)
+previsione_lasso <- predict(lasso, test, "prob")
+previsione_lasso$R <- predict(lasso, test)
+head(previsione_lasso)
+```
+ 
+```{r, echo=FALSE}
+previsione_lasso$test <- test$r
+for(i in 1:length(previsione_lasso$r0)){
+  if(previsione_lasso$R[i]==previsione_lasso$test[i]){previsione_lasso$prev_lasso01[i]=1}
+  else{previsione_lasso$prev_lasso01[i]=0}
+}
+```
+ 
+ 
+## Confronto delle previsioni  
+Si costruisce una tabella che riporta, per i tre modelli migliori, il numero di pistacchi classificati correttamente.
+
+```{r}
+confronto <- rbind(table(previsione_rete1$prev_rete101),table(previsione_rf$prev_rf01),table(previsione_lasso$prev_lasso01))
+rownames(confronto) <- c("Rete - Lasso","Random Forest","Lasso"); confronto
+```
+
+Si può notare che i risultati sono molto simili e in particolare la Rete Neurale con model selection ricavata dal modello Lasso classifica correttamente 586 pistacchi (91%), il Random Forest 589 (92%), mentre il Lasso 584 (91%).
+
+Si crea un dataset che contiene le previsioni di tutti e 3 i modelli:
+ 
+```{r}
+previsioni_tot <- as.data.frame(cbind(previsione_rete1$prev_rete101, 
+                                      previsione_rf$prev_rf01, 
+                                      previsione_lasso$prev_lasso01))
+colnames(previsioni_tot) <- c("Rete1", "Rf", "Lasso")
+```
+ 
+Per osservare più nel dettaglio la distribuzione delle previsioni in base ai 3 modelli considerati, si considerano i pattern di risposta:
+ 
+```{r rows.print=8}
+#si incollano fra loro i valori presenti in previsioni_tot
+profilo <- apply(previsioni_tot, 1, paste, collapse = "-") 
+
+#si crea la variabile profilo in previsioni_tot
+previsioni_tot$profilo <- profilo
+
+#si calcola la frequenza assoluta relativa ad ogni profilo di risposta 
+freq_assoluta <- as.data.frame(table(profilo))
+
+#si ordinano i profili di risposta in senso decrescente in base al valore assoluto relativo
+freq_assoluta <- freq_assoluta[rev(order(freq_assoluta$Freq)),]
+
+#si rinominano le colonne della variabile freq_assoluta e si richiama la tabella finale
+colnames(freq_assoluta) <- c("Rete1-Rf-Lasso", "Frequenza assoluta")
+freq_assoluta 
+```
+
+I pattern di risposta all'interno dei dati sono 8:
+
+- **1-1-1**: in 552 casi tutti e 3 i modelli classificano correttamente le osservazioni
+- **0-0-0**: in 31 casi tutti e 3 i modelli sbagliano a classificare le osservazioni
+- **0-1-1**: in 17 casi la Rete sbaglia nel classificare le osservazioni
+- **1-0-1**: in 14 casi il modello random forest sbaglia nel classificare le osservazioni
+- **1-1-0**: in 12 casi il modello Lasso sbaglia nel classificare le osservazioni
+- **1-0-0**: in 8 casi solo la Rete classifica correttamente le osservazioni
+- **0-1-0**: in 8 casi solo la Random Forest classifica correttamente le osservazioni
+- **0-0-1**: in 1 caso solo il Lasso classifica correttamente le osservazioni
+
+In totale quindi, oltre al numero di casi in cui tutti e tre i modelli sbagliano:
+
+- la Rete sbaglia in 26 casi (17+8+1);
+- la Random Forest sbaglia in 23 casi (14+8+1);
+- il Lasso sbaglia in 28 casi (12+8+8);
+
+Il modello che prevede i dati nel modo migliore è dunque il Random Forest. 
+
+# CONCLUSIONI
+Dopo aver analizzato 11 modelli differenti i tre modelli migliori sono risultati il Random Forest, la Rete Neurale derivante dalla prima model selection eseguita con il modello Lasso e il modello Lasso, coincidente con la regressione logistica. 
+
+Questi modelli hanno prestazioni simili ma, dal punto di vista pratico, Random Forest e Rete Neurale sono modelli computazionalmente più onerosi rispetto al Lasso. 
+
+Se in fase di classificazione dei pistacchi si dispone di risorse scarse e tecnologie poco all'avanguardia, potrebbe essere preferibile un modello con buone performance, ma meno complesso, come il Lasso. Immmaginando invece un contesto in cui il numero di pistacchi da analizzare è molto più elevato di quello considerato, potrebbe essere preferibile utilizzare modelli più complessi, adatti all'elaborazione di molti dati e in grado di classificare meglio le due specie di pistacchio, come la Random Forest o la Rete Neurale.
+
+Utilizzando un modello con buone prestazioni si può raggiungere l'obiettivo di rendere più semplice il processo di classificazione, diminuendo le risorse economiche necessarie e il tempo impiegato e quindi il prezzo del prodotto finale. 
+
+
+
+

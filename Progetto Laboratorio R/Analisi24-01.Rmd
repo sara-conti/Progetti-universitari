@@ -1,0 +1,404 @@
+---
+title: "Analisi"
+author: "Sara Conti"
+date: "2023-01-10"
+output: pdf_document
+---
+
+```{r}
+load("/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_pulito1.RData")
+```
+\
+```{r}
+SOFA_pulito$SOFA <- as.factor(SOFA_pulito$SOFA_cat1)
+SOFA_pulito$`Num. cadute` <- as.factor(SOFA_pulito$CADUTE)
+SOFA_pulito$Albumina <- SOFA_pulito$ALB
+SOFA_pulito$Calcio <- SOFA_pulito$CALC
+SOFA_pulito$Età <- SOFA_pulito$ETA
+SOFA_pulito$Sesso <- as.factor(SOFA_pulito$SEX)
+SOFA_pulito$`Stato Civile` <- as.factor(SOFA_pulito$STATCIV_cat)
+SOFA_pulito$`CC Score` <- as.factor(SOFA_pulito$CCSCORE_cat1)
+SOFA_pulito$Emoglobina <- SOFA_pulito$HBING
+SOFA_pulito$`Tempo di Ricovero` <- SOFA_pulito$TEMPRIC
+SOFA_pulito$`Durata intervento` <- SOFA_pulito$INTDURAT
+SOFA_pulito$Anestesia <- as.factor(SOFA_pulito$ANEST_cat)
+SOFA_pulito$MMSE <- as.factor(SOFA_pulito$MMSE_cat)
+```
+
+
+# DESCRITTIVE
+\
+```{r}
+require(table1)
+SOFA_pulito$SOFA_cat1 <- factor(SOFA_pulito$SOFA_cat1, levels=c(0,1,2),
+                               labels=c("Nessuna/Lieve disfunzione", # Reference
+                                        "Moderata/Elevata disfunzione", "P-value"))
+
+SOFA_pulito$Sesso <- factor(SOFA_pulito$SEX, levels=c(1,2),
+                          labels=c("Maschi", "Femmine"))
+
+SOFA_pulito$`Stato Civile` <- factor(SOFA_pulito$STATCIV_cat, levels=c(1,2),
+                              labels=c("Coniugato", "Non sposato/Vedovo"))
+
+SOFA_pulito$`Num. cadute` <- factor(SOFA_pulito$CADUTE, levels=c(1,2), labels=c("1","2"))
+
+SOFA_pulito$`Anestesia` <- factor(SOFA_pulito$ANEST_cat, levels=c(1,2), 
+                     labels = c("Generale","Spinale/Plessica/Combinata"))
+
+SOFA_pulito$`MMSE` <- factor(SOFA_pulito$MMSE_cat, levels = c(0,1,2),
+                               labels = c("Cognitivamente sano","Lieve
+                                          deterioramento cognitivo",
+                                          "Con demenza"))
+
+SOFA_pulito$`CC Score` <- factor(SOFA_pulito$CCSCORE_cat1, levels = c(0,1),
+                               labels = c("Comoborbidità non severa",
+                                          "Severa comoborbidità"))
+
+units(SOFA_pulito$ALTEZ) <- "cm"
+units(SOFA_pulito$PESO) <- "kg"
+units(SOFA_pulito$ETA) <- "anni"
+units(SOFA_pulito$INTDURAT) <- "minuti"
+units(SOFA_pulito$HBING) <- "g/dl"
+units(SOFA_pulito$ALB) <- "g/dl"
+units(SOFA_pulito$CALC) <- "mg/dl"
+
+colnames(SOFA_pulito)[c(11,12,14,18,30)] <- c("Albumina","Calcio","Emoglobina","Durata intervento","Età")
+```
+\
+```{r} 
+rndr <- function(x, name, ...) {
+  print(x)
+  if (length(x) == 0) {
+    y <- SOFA_pulito[[name]]
+    s <- rep("", length(render.default(x=y, name=name, ...)))
+    if (is.numeric(y)) {
+      p <- wilcox.test(y ~ SOFA_pulito$SOFA_cat1)$p.value
+    } else if (is.factor(y) || is.character(y)) {
+      p <- fisher.test(table(y, droplevels(SOFA_pulito$SOFA_cat1)))$p.value
+    }
+    s[3] <- sub("<", "&lt;", format.pval(p, digits=3, eps=0.001))
+    s
+  } else {
+    render.default(x=x, name=name, ...)
+  }
+}
+
+rndr.strat <- function(label, n, ...) {
+  ifelse(n==0, label, render.strat.default(label, n, ...))
+}
+
+table1(~ BMI + Età + Albumina + Calcio + Emoglobina  + `Durata intervento` | SOFA_cat1, 
+       data=SOFA_pulito, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid")
+
+table1(~ Sesso +`Stato Civile`  + `Num. cadute` + `CC Score` + Anestesia + MMSE | SOFA_cat1,
+       data=SOFA_pulito, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid") 
+```
+
+## Solo con la mediana
+
+```{r}
+rndr <- function(x, name, ...) {
+  if (length(x) == 0) {
+    y <- SOFA_pulito[[name]]
+    s <- rep("", length(render.default(x=y, name=name, ...)))
+    if (is.numeric(y)) {
+      p <- wilcox.test(y ~ SOFA_pulito$SOFA_cat1)$p.value
+    } else if (is.factor(y) || is.character(y)) {
+      p <- fisher.test(table(y, droplevels(SOFA_pulito$SOFA_cat1)))$p.value
+    }
+    s[3] <- sub("<", "&lt;", format.pval(p, digits=3, eps=0.001))
+    s
+  } else {
+    if (is.numeric(x)){
+    render.default(x=x, name=name, ...)
+    parse.abbrev.render.code(c("", "Median [IQR]"))(x)}
+    else {render.default(x=x, name=name, ...)}
+  }
+}
+
+rndr.strat <- function(label, n, ...) {
+  ifelse(n==0, label, render.strat.default(label, n, ...))
+}
+
+table1(~ BMI + Età + Albumina + Calcio + Emoglobina  + `Durata intervento` | SOFA_cat1,
+       data=SOFA_pulito, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid")
+
+table1(~ Sesso +`Stato Civile`  + `Num. cadute` + `CC Score` + Anestesia + MMSE | SOFA_cat1,
+       data=SOFA_pulito, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F, topclass="Rtable1-grid") 
+```
+
+
+
+
+
+
+# SOPRAVVIVENZA SOFA
+\
+```{r}
+# Load the survival package
+library(survival)
+# Fit the Kaplan-Meier estimator to the data
+km_sofacat <- survfit(Surv(time, evento) ~ SOFA_cat1, data = SOFA_pulito)
+
+# log-rank test
+require(Rcpp)
+rank <- survdiff(Surv(time, evento) ~ SOFA_cat1, data=SOFA_pulito)
+rank$pvalue
+# Plot the Kaplan-Meier estimate
+plot(km_sofacat, col = c(2,4), lwd=c(1.5,1.5), main='Curve di Kaplan-Meier per SOFA score', xlab="Tempo (giorni)")
+legend("bottomleft", legend = c("Nessuna/Lieve disfunzione", "Moderata/Alta disfunzione"), 
+       col = c(2,4), lwd = c(1.5,1.5), cex = 0.8,bty="n")
+text(x = 425, y = 0.98, paste0("p-value log-rank:", round(rank$pvalue,7)), cex = 0.8)
+rect(xleft = 350, ybottom = 0.94, xright = 497, ytop = 1.02, lwd = 1, 
+     lty="solid" , col = "transparent")
+```              
+
+# SOPRAVVIVENZA CCSCORE
+\
+```{r}
+km_ccscorecat <- survfit(Surv(time, evento) ~ SOFA_pulito$CCSCORE_cat1,
+                         data = SOFA_pulito)
+require(Rcpp)
+rank <- survdiff(Surv(time, evento) ~ CCSCORE_cat1, data=SOFA_pulito)
+rank$pvalue
+# Plot the Kaplan-Meier estimate
+plot(km_ccscorecat, col = c(2,4), 
+     lwd=c(1.5,1.5))
+legend("bottomleft", legend = c("Assenza/Lieve comorbidità", "Moderata/Elevata comorbidità"), 
+       col = c(2,4), lwd=c(1.5,1.5), cex = 0.8, bty = "n")
+
+text(x = 425, y = 0.996, paste0("p-value log-rank:", round(rank$pvalue,4)), cex = 0.8)
+rect(xleft = 350, ybottom = 0.96, xright = 497, ytop = 1.03, lwd = 1, 
+     lty="solid" , col = "transparent")
+```
+
+# MODELLO DI COX
+## MODEL SELECTION MODELLO DI COX
+\
+```{r}
+library(survival)
+library(MASS)
+
+# Creare un oggetto di sopravvivenza
+surv <- Surv(SOFA_pulito$time, SOFA_pulito$evento)
+
+# Eseguire una procedura stepwise per selezionare  variabili significative nel modello di Cox
+model <- coxph(surv ~ SOFA+Sesso+`Stato Civile`+`Num. cadute`+`CC Score`+MMSE+Albumina+
+                 Calcio+Emoglobina+`Tempo di Ricovero`+`Durata intervento`+Anestesia+Età+BMI, data = SOFA_pulito)
+step_model <- stepAIC(model, direction = "backward")
+summary(step_model)
+```
+\
+```{r}
+model1 <- coxph(surv ~ SOFA + MMSE + Emoglobina + `Durata intervento` + Anestesia + BMI +
+                  Età + Sesso,
+                data = SOFA_pulito)
+AIC(model1)
+summary(model1)
+exp(model1$coefficients) #HAZARD RATIO da commentare
+```
+
+# VERIFICA ASSUNTI COX
+Nel modello di Cox in primo luogo è necessario verificare l'assunto principale:
+ - Gli effetti delle covariate sul tasso di evento (Hazard Ratio)
+   rimangano costanti nel tempo.
+Attenzione: l’assenza di significatività statistica in un test di proporzionalità non implica che l’ipotesi nulla sia vera (proporzionalità degli hazard) come confermato da Austin2017_PHsimulation 
+Il test statistico deve essere quindi interpretato in modo critico, e affiancato sempre all’analisi grafica delle curve.
+\
+```{r}
+fit <- coxph(Surv(time, evento) ~  SOFA_cat1 + MMSE_cat + HBING + INTDURAT + ANEST_cat + BMI,
+             data = SOFA_pulito)
+temp <- cox.zph(fit) 
+print(temp)                 
+plot(temp) #inserire grafico HBING e SOFA     
+```
+\
+I valori sembrano mostrano l'accettazione dell'ipotesi nulla, quindi si può sostenre che non vi sono evidenze empiriche per sostenere che gli HR non siano proporzionali.
+\
+
+## log-log
+\
+```{r}
+km_home <- survfit(surv ~ SOFA, data = SOFA_pulito)
+plot(km_home, fun = "cloglog", xlab = "log(tempo)",ylab = "log-log(prob. di sopravvivenza)", 
+     main = "SOFA", col=c(2,4)) 
+legend("bottomright", legend = c("Assenza/Lieve comorbidità", "Moderata/Elevata comorbidità"), 
+       col = c(2,4), lwd=c(1.5,1.5), cex = 0.8, bty = "n")
+```
+
+# Modello senza covariate SOFA
+\
+```{r}
+fit <- coxph(Surv(time, evento) ~  SOFA_cat1,
+             data = SOFA_pulito)
+summary(fit)
+```
+
+# Modello senza covariate CC Score
+\
+```{r}
+fit2 <- coxph(Surv(time, evento) ~  CCSCORE_cat1,
+             data = SOFA_pulito)
+summary(fit2)
+```
+
+# RMST
+\
+```{r}
+library(survRM2)
+SOFA_pulito$evento <- as.numeric(SOFA_pulito$evento)
+SOFA_pulito$SOFA_cat <- as.numeric(SOFA_pulito$SOFA_cat)
+obj <- rmst2(SOFA_pulito$time, SOFA_pulito$evento, SOFA_pulito$SOFA_cat, tau=180)
+plot(obj)
+print(obj)
+```
+
+
+
+# DATI NON IMPUTATI
+
+```{r}
+load("/Users/saret/Library/CloudStorage/OneDrive-UniversitàdegliStudidiMilano-Bicocca/Università/Secondo Anno Biostat/Lab R/Progetto/SOFA_grezzo.Rdata")
+```
+\
+```{r}
+SOFA_grezzo$SOFA <- as.factor(SOFA_grezzo$SOFA_cat1)
+SOFA_grezzo$`Num. cadute` <- as.factor(SOFA_grezzo$CADUTE)
+SOFA_grezzo$Albumina <- SOFA_grezzo$ALB
+SOFA_grezzo$Calcio <- SOFA_grezzo$CALC
+SOFA_grezzo$Età <- SOFA_grezzo$ETA
+SOFA_grezzo$Sesso <- as.factor(SOFA_grezzo$SEX)
+SOFA_grezzo$`Stato Civile` <- as.factor(SOFA_grezzo$STATCIV_cat)
+SOFA_grezzo$`CC Score` <- as.factor(SOFA_grezzo$CCSCORE_cat1)
+SOFA_grezzo$Emoglobina <- SOFA_grezzo$HBING
+SOFA_grezzo$`Tempo di Ricovero` <- SOFA_grezzo$TEMPRIC
+SOFA_grezzo$`Durata Intervento` <- SOFA_grezzo$INTDURAT
+SOFA_grezzo$Anestesia <- as.factor(SOFA_grezzo$ANEST_cat)
+SOFA_grezzo$MMSE <- as.factor(SOFA_grezzo$MMSE_cat)
+```
+
+## Descrittive
+\
+```{r}
+require(table1)
+SOFA_grezzo$SOFA_cat1 <- factor(SOFA_grezzo$SOFA_cat1, levels=c(0,1,2),
+                               labels=c("Nessuna/Lieve disfunzione", # Reference
+                                        "Moderata/Elevata disfunzione", "P-value"))
+
+SOFA_grezzo$Sesso <- factor(SOFA_grezzo$SEX, levels=c(1,2),
+                          labels=c("Maschi", "Femmine"))
+
+SOFA_grezzo$`Stato Civile` <- factor(SOFA_grezzo$STATCIV_cat, levels=c(1,2),
+                              labels=c("Coniugato", "Non sposato/Vedovo"))
+
+SOFA_grezzo$`Num. cadute` <- factor(SOFA_grezzo$CADUTE, levels=c(1,2), labels=c("1","2"))
+
+SOFA_grezzo$`Anestesia` <- factor(SOFA_grezzo$ANEST_cat, levels=c(1,2), 
+                     labels = c("Generale","Spinale/Plessica/Combinata"))
+
+SOFA_grezzo$`MMSE` <- factor(SOFA_grezzo$MMSE_cat, levels = c(0,1,2),
+                               labels = c("Cognitivamente sano","Lieve
+                                          deterioramento cognitivo",
+                                          "Con demenza"))
+
+SOFA_grezzo$`CC Score` <- factor(SOFA_grezzo$CCSCORE_cat1, levels = c(0,1),
+                               labels = c("Comoborbidità non severa",
+                                          "Severa comoborbidità"))
+
+units(SOFA_grezzo$ALTEZ) <- "cm"
+units(SOFA_grezzo$PESO) <- "kg"
+units(SOFA_grezzo$ETA) <- "anni"
+units(SOFA_grezzo$INTDURAT) <- "minuti"
+units(SOFA_grezzo$HBING) <- "g/dl"
+units(SOFA_grezzo$ALB) <- "g/dl"
+units(SOFA_grezzo$CALC) <- "mg/dl"
+
+colnames(SOFA_grezzo)[c(11,12,14,18,30)] <- c("Albumina","Calcio","Emoglobina","Durata intervento","Età")
+```
+\
+```{r} 
+rndr <- function(x, name, ...) {
+  if (length(x) == 0) {
+    y <- SOFA_grezzo[[name]]
+    s <- rep("", length(render.default(x=y, name=name, ...)))
+    if (is.numeric(y)) {
+      p <- wilcox.test(y ~ SOFA_grezzo$SOFA_cat1)$p.value
+    } else if (is.factor(y) || is.character(y)) {
+      p <- fisher.test(table(y, droplevels(SOFA_grezzo$SOFA_cat1)))$p.value
+    }
+    s[2] <- sub("<", "&lt;", format.pval(p, digits=3, eps=0.001))
+    s
+  } else {
+    render.default(x=x, name=name, ...)
+  }
+}
+rndr.strat <- function(label, n, ...) {
+  ifelse(n==0, label, render.strat.default(label, n, ...))
+}
+
+
+
+table1(~ BMI + Età + Albumina + Calcio + Emoglobina  + `Durata intervento` | SOFA_cat1, 
+       data=SOFA_grezzo, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F
+       , topclass="Rtable1-zebra" )
+
+
+
+
+table1(~ Sesso +`Stato Civile`  + `Num. cadute` + `CC Score` + Anestesia + MMSE | SOFA_cat1, 
+       data=SOFA_grezzo, overall="Total", render = rndr, 
+       render.strat=rndr.strat, droplevels=F
+       , topclass="Rtable1-zebra" )
+```
+\
+```{r}
+table(SOFA_grezzo$evento,SOFA_grezzo$SOFA_cat1)
+```
+
+# COX
+## Modello di Cox senza covariate
+\
+```{r}
+library(survival)
+library(MASS)
+
+require(survival)
+fit <- coxph(Surv(time, evento) ~  SOFA,
+             data = SOFA_grezzo)
+summary(fit)
+```
+
+## Model selection
+```{r}
+surv <- Surv(SOFA_grezzo$time, SOFA_grezzo$evento)
+
+model3 <- coxph(surv ~ SOFA+Sesso+`Stato Civile`+`Num. cadute`+`CC Score`+MMSE+Albumina+
+                 Calcio+Emoglobina+`Tempo di Ricovero`+`Durata Intervento`+Anestesia+Età+BMI, data = SOFA_grezzo)
+step_model3 <- stepAIC(model3, direction = "backward")
+summary(step_model3)
+```
+
+## Modello migliore
+\
+```{r}
+model2 <- coxph(surv ~  SOFA + `Num. cadute` + Albumina + Calcio + Età + BMI,
+                data = SOFA_grezzo)
+summary(model2)
+AIC(model2)
+```
+
+### Modello con tutte le covariate socio-demografiche: Sesso, Età, BMI
+\
+```{r}
+model4 <- coxph(surv ~  SOFA + `Num. cadute` + Albumina + Calcio + Età + BMI + Sesso,
+                data = SOFA_grezzo)
+summary(model4)
+AIC(model4)
+```
+
+
